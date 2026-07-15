@@ -8,10 +8,14 @@ export interface Capability {
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!config.token) throw new Error('AGENT_CENTER_TOKEN not set (run `agent-center login`, or set the env var)');
+  // Only send Content-Type when there's a body — a bodyless POST/DELETE (e.g. heartbeat) with
+  // Content-Type: application/json makes strict JSON parsers reject an empty body as a 400.
+  const headers: Record<string, string> = { Authorization: `Bearer ${config.token}` };
+  if (init.body != null) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${config.baseUrl}${path}`, {
     ...init,
     signal: AbortSignal.timeout(10000),
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.token}`, ...init.headers },
+    headers: { ...headers, ...init.headers },
   });
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
