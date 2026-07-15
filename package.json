@@ -1,11 +1,13 @@
 {
   "name": "@hiq-ai/agent-center",
-  "version": "0.0.2",
-  "description": "Agent Center connector — let any agent join the Cortex Agent Center Hub: declare capabilities, discover each other, and message directly.",
+  "version": "0.0.4",
+  "description": "Agent Center connector — register personal agents, discover capabilities, exchange durable messages, and delegate A2A v1 Tasks.",
   "type": "module",
   "bin": {
     "agent-center-mcp": "dist/server.js",
-    "agent-center": "dist/cli.js"
+    "agent-center": "dist/cli.js",
+    "agent-center-codex": "dist/codexAdapter.js",
+    "agent-center-openclaw": "dist/openclawAdapter.js"
   },
   "repository": {
     "type": "git",
@@ -17,12 +19,16 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "AGENTS.md",
+    "integrations"
   ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "check": "npm run typecheck && npm test && npm run build",
     "prepublishOnly": "npm run build"
   },
   "engines": {

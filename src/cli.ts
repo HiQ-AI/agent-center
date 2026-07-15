@@ -11,6 +11,7 @@
 import { spawn } from 'node:child_process';
 import { config } from './config.js';
 import { loadAuth, saveAuth, clearAuth, authFilePath } from './authStore.js';
+import { ackMessageFor, streamEvents } from './hubClient.js';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -29,14 +30,13 @@ function openBrowser(url: string): void {
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 async function login(): Promise<void> {
-  const agentId = arg('id') ?? config.agentId;
-  const agentName = arg('name') ?? config.agentName;
+  const clientName = arg('name') ?? 'Agent Center CLI';
   const deck = config.deckBase;
 
   const start = await fetch(`${deck}/oauth/device_authorization`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ agent_id: agentId, agent_name: agentName }),
+    body: JSON.stringify({ agent_id: 'agent-center-cli', agent_name: clientName }),
   });
   if (!start.ok) {
     console.error(`Failed to start authorization: ${start.status} ${await start.text()}`);
@@ -72,9 +72,9 @@ async function login(): Promise<void> {
     if (res.status === 428) continue; // authorization_pending
     if (res.ok) {
       const { access_token, owner } = (await res.json()) as { access_token: string; owner: string };
-      saveAuth({ token: access_token, owner, agentId, agentName, hubUrl: config.baseUrl });
-      console.log(`\n\n  ✅ Connected. Identity owner=${owner}; credential stored at ${authFilePath}`);
-      console.log('  agent-center-mcp now attaches it automatically — the agent has its interconnection tools.\n');
+      saveAuth({ token: access_token, owner, hubUrl: config.baseUrl });
+      console.log(`\n\n  ✅ Authorized as owner=${owner}; credential stored at ${authFilePath}`);
+      console.log('  Each agent session must call agent_center_register before send/inbox/heartbeat.\n');
       return;
     }
     console.error(`\n  Authorization failed: ${res.status} ${await res.text()}`);
@@ -90,7 +90,7 @@ function whoami(): void {
     console.log('Not logged in. Run `agent-center login` to connect.');
     return;
   }
-  console.log(`Connected: ${a.agentName} (id=${a.agentId}, owner=${a.owner})\nHub=${a.hubUrl}\nCredential: ${authFilePath}`);
+  console.log(`Authorized owner=${a.owner}\nHub=${a.hubUrl}\nCredential: ${authFilePath}`);
 }
 
 function logout(): void {
@@ -98,13 +98,42 @@ function logout(): void {
   console.log('Local credential cleared.');
 }
 
+async function stream(): Promise<void> {
+  const agentId = arg('agent-id');
+  if (!agentId) {
+    console.error('stream requires --agent-id <registered-agent-id>');
+    process.exitCode = 2;
+    return;
+  }
+  process.stderr.write(`Streaming Agent Center message/task events for ${agentId}; Ctrl-C to stop.\n`);
+  for await (const event of streamEvents(agentId)) {
+    process.stdout.write(`${JSON.stringify(event)}\n`);
+  }
+}
+
+async function ack(): Promise<void> {
+  const agentId = arg('agent-id');
+  const messageId = arg('message-id');
+  if (!agentId || !messageId) {
+    console.error('ack requires --agent-id <id> --message-id <id>');
+    process.exitCode = 2;
+    return;
+  }
+  await ackMessageFor(agentId, messageId);
+  console.log(`Acknowledged ${messageId}.`);
+}
+
 const cmd = process.argv[2];
 if (cmd === 'login') void login();
 else if (cmd === 'whoami') whoami();
 else if (cmd === 'logout') logout();
+else if (cmd === 'stream') void stream();
+else if (cmd === 'ack') void ack();
 else {
-  console.log('Usage: agent-center <login|whoami|logout>');
+  console.log('Usage: agent-center <login|whoami|logout|stream|ack>');
   console.log('  login   device authorization to join the Agent Center (browser confirm)');
-  console.log('  whoami  show the current connected identity');
+  console.log('  whoami  show the current authorization');
   console.log('  logout  clear the local credential');
+  console.log('  stream  stream durable inbox events as NDJSON (--agent-id <id>)');
+  console.log('  ack     acknowledge one handled message (--agent-id <id> --message-id <id>)');
 }
