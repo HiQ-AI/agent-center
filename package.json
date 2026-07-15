@@ -1,0 +1,33 @@
+{
+  "name": "@hiq-ai/agent-center-mcp",
+  "version": "0.0.1",
+  "description": "Agent Center 连接器 —— 让任意 agent 接入 Cortex Agent Center Hub:声明能力、发现彼此、互相通信。",
+  "type": "module",
+  "bin": {
+    "agent-center-mcp": "./dist/server.js",
+    "agent-center": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "Apache-2.0"
+}
