@@ -1,7 +1,7 @@
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { config } from '../src/config.js';
-import { isRegistered, register, sendMessage } from '../src/hubClient.js';
+import { isRegistered, register, sendMessage, streamInbox } from '../src/hubClient.js';
 
 const originalFetch = globalThis.fetch;
 const originalToken = config.token;
@@ -53,4 +53,38 @@ test('register creates the current session with passive defaults', async () => {
     discoverable: false,
     acceptsDelegation: false,
   });
+});
+
+test('streamInbox parses durable SSE message events across chunk boundaries', async () => {
+  config.token = 'mkt_test';
+  const encoder = new TextEncoder();
+  const payload = {
+    id: 'msg_1',
+    fromAgent: 'agent-a',
+    toAgent: 'agent-b',
+    capability: null,
+    body: 'hello',
+    replyTo: null,
+    createdAt: '2026-07-15T00:00:00.000Z',
+  };
+  let request: { url: string; init?: RequestInit } | undefined;
+  globalThis.fetch = async (input, init) => {
+    request = { url: String(input), init };
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(': connected\n\nid: msg_1\nevent: mes'));
+        controller.enqueue(encoder.encode(`sage\ndata: ${JSON.stringify(payload)}\n\n`));
+        controller.close();
+      },
+    });
+    return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  };
+
+  const received = [];
+  for await (const message of streamInbox('agent-b')) received.push(message);
+
+  assert.deepEqual(received, [payload]);
+  assert.equal(request?.url, `${config.baseUrl}/api/agents/agent-b/events`);
+  assert.equal((request?.init?.headers as Record<string, string>).Accept, 'text/event-stream');
+  assert.equal((request?.init?.headers as Record<string, string>).Authorization, 'Bearer mkt_test');
 });

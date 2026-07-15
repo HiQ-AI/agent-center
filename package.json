@@ -5,7 +5,9 @@
   "type": "module",
   "bin": {
     "agent-center-mcp": "dist/server.js",
-    "agent-center": "dist/cli.js"
+    "agent-center": "dist/cli.js",
+    "agent-center-codex": "dist/codexAdapter.js",
+    "agent-center-openclaw": "dist/openclawAdapter.js"
   },
   "repository": {
     "type": "git",
@@ -17,7 +19,9 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "AGENTS.md",
+    "integrations"
   ],
   "scripts": {
     "build": "tsc",

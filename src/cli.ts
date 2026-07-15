@@ -11,6 +11,7 @@
 import { spawn } from 'node:child_process';
 import { config } from './config.js';
 import { loadAuth, saveAuth, clearAuth, authFilePath } from './authStore.js';
+import { ackMessageFor, streamInbox } from './hubClient.js';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -97,13 +98,42 @@ function logout(): void {
   console.log('Local credential cleared.');
 }
 
+async function stream(): Promise<void> {
+  const agentId = arg('agent-id');
+  if (!agentId) {
+    console.error('stream requires --agent-id <registered-agent-id>');
+    process.exitCode = 2;
+    return;
+  }
+  process.stderr.write(`Streaming Agent Center messages for ${agentId}; Ctrl-C to stop.\n`);
+  for await (const message of streamInbox(agentId)) {
+    process.stdout.write(`${JSON.stringify(message)}\n`);
+  }
+}
+
+async function ack(): Promise<void> {
+  const agentId = arg('agent-id');
+  const messageId = arg('message-id');
+  if (!agentId || !messageId) {
+    console.error('ack requires --agent-id <id> --message-id <id>');
+    process.exitCode = 2;
+    return;
+  }
+  await ackMessageFor(agentId, messageId);
+  console.log(`Acknowledged ${messageId}.`);
+}
+
 const cmd = process.argv[2];
 if (cmd === 'login') void login();
 else if (cmd === 'whoami') whoami();
 else if (cmd === 'logout') logout();
+else if (cmd === 'stream') void stream();
+else if (cmd === 'ack') void ack();
 else {
-  console.log('Usage: agent-center <login|whoami|logout>');
+  console.log('Usage: agent-center <login|whoami|logout|stream|ack>');
   console.log('  login   device authorization to join the Agent Center (browser confirm)');
   console.log('  whoami  show the current authorization');
   console.log('  logout  clear the local credential');
+  console.log('  stream  stream durable inbox events as NDJSON (--agent-id <id>)');
+  console.log('  ack     acknowledge one handled message (--agent-id <id> --message-id <id>)');
 }

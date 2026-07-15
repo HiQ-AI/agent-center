@@ -10,7 +10,22 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { config } from './config.js';
-import { register, heartbeat, discover, sendMessage, fetchInbox, ackMessage, isRegistered } from './hubClient.js';
+import {
+  claudeChannelEnabled,
+  claudeChannelServerOptions,
+  startClaudeChannel,
+  stopClaudeChannel,
+} from './claudeChannel.js';
+import {
+  register,
+  heartbeat,
+  discover,
+  sendMessage,
+  fetchInbox,
+  ackMessage,
+  waitForMessage,
+  isRegistered,
+} from './hubClient.js';
 
 const VERSION = '0.0.3';
 
@@ -28,7 +43,10 @@ function fail(text: string): { content: Array<{ type: 'text'; text: string }>; i
   return { content: [{ type: 'text', text }], isError: true };
 }
 
-const server = new McpServer({ name: 'agent-center', version: VERSION });
+const server = new McpServer(
+  { name: 'agent-center', version: VERSION },
+  claudeChannelServerOptions(),
+);
 
 server.registerTool(
   'agent_center_register',
@@ -62,6 +80,7 @@ server.registerTool(
         acceptsDelegation: args.accepts_delegation,
       });
       startHeartbeat();
+      startClaudeChannel(server);
       return ok(
         `Registered session ${config.agentId}.\n` +
           `  capabilities      : ${args.capabilities?.length ?? 0}\n` +
@@ -146,6 +165,51 @@ server.registerTool(
 );
 
 server.registerTool(
+  'agent_center_wait',
+  {
+    title: 'Wait for an Agent Center message',
+    description:
+      'Hold this tool call until one message arrives for the registered session or the timeout expires. Use during an active turn instead of polling. This does not wake an idle host; host-specific integrations handle that.',
+    inputSchema: {
+      timeout_seconds: z.number().int().min(1).max(50).optional().describe('Wait duration (default 30 seconds, max 50)'),
+    },
+  },
+  async (args) => {
+    try {
+      const message = await waitForMessage(args.timeout_seconds ?? 30);
+      if (!message) return ok('No message arrived before the timeout.');
+      return ok(
+        `Message [${message.id}] from ${message.fromAgent}` +
+          `${message.capability ? ` (capability: ${message.capability})` : ''}` +
+          `${message.replyTo ? ` ↩︎${message.replyTo}` : ''}:\n${message.body}\n\n` +
+          `Handle it idempotently, then call agent_center_ack(message_id="${message.id}").`,
+      );
+    } catch (e) {
+      return fail(`Wait failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  },
+);
+
+server.registerTool(
+  'agent_center_ack',
+  {
+    title: 'Acknowledge one Agent Center message',
+    description: 'Mark one inbox message as handled. Ack only after its work/reply has completed successfully.',
+    inputSchema: {
+      message_id: z.string().describe('Message id returned by inbox/wait/channel delivery'),
+    },
+  },
+  async (args) => {
+    try {
+      await ackMessage(args.message_id);
+      return ok(`Acknowledged ${args.message_id}.`);
+    } catch (e) {
+      return fail(`Ack failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  },
+);
+
+server.registerTool(
   'agent_center_whoami',
   {
     title: 'Check connection status',
@@ -181,9 +245,20 @@ async function probeReachable(): Promise<boolean> {
 }
 
 async function main(): Promise<void> {
-  process.stderr.write(`[agent-center-mcp ${VERSION}] Hub=${config.baseUrl} id=${config.agentId}${config.token ? '' : ' ⚠️ AGENT_CENTER_TOKEN not set'}\n`);
+  process.stderr.write(
+    `[agent-center-mcp ${VERSION}] Hub=${config.baseUrl} id=${config.agentId}` +
+      `${claudeChannelEnabled ? ' channel=claude' : ''}` +
+      `${config.token ? '' : ' ⚠️ AGENT_CENTER_TOKEN not set'}\n`,
+  );
   await server.connect(new StdioServerTransport());
+  if (isRegistered()) {
+    startHeartbeat();
+    startClaudeChannel(server);
+  }
 }
+
+process.once('SIGINT', stopClaudeChannel);
+process.once('SIGTERM', stopClaudeChannel);
 
 main().catch((e) => {
   process.stderr.write(`[agent-center-mcp] fatal: ${e instanceof Error ? e.message : String(e)}\n`);
