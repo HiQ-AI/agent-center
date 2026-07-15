@@ -2,15 +2,15 @@
 /**
  * Agent Center connector — stdio MCP server. Run via `npx -y -p @hiq-ai/agent-center agent-center-mcp`.
  * Lets any agent (Claude Code / Cortex Cowork / your own) join the Cortex Agent Center Hub:
- * declare capabilities (register), find other agents (discover), delegate directly (send),
- * receive work (inbox), self-check (whoami). All outbound HTTP (inbox is polled) — no inbound, NAT-friendly.
+ * register a session, find other agents (discover), delegate directly (send),
+ * pull work (inbox), self-check (whoami). All outbound HTTP — no inbound, NAT-friendly.
  * The host injects AGENT_CENTER_URL / AGENT_CENTER_TOKEN / AGENT_ID / AGENT_NAME / AGENT_KIND via env.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { config } from './config.js';
-import { ensureIdentity, register, heartbeat, discover, sendMessage, fetchInbox, ackMessage } from './hubClient.js';
+import { register, heartbeat, discover, sendMessage, fetchInbox, ackMessage, isRegistered } from './hubClient.js';
 
 const VERSION = '0.0.3';
 
@@ -33,23 +33,42 @@ const server = new McpServer({ name: 'agent-center', version: VERSION });
 server.registerTool(
   'agent_center_register',
   {
-    title: 'Publish Agent Center capabilities',
+    title: 'Register this Agent Center session',
     description:
-      'Publish or update the capabilities other agents may discover and delegate to. Login already provisions a private identity, so this tool is optional and is not required before discover/send/inbox.',
+      'Register this MCP session as a distinct agent. Required before send/inbox/heartbeat; login only authorizes the owner. Capabilities may be empty, discoverability is optional, and unsolicited delegation is disabled by default.',
     inputSchema: {
       name: z.string().describe('Public display name (e.g. "Tris", "helix expert")'),
       description: z.string().optional().describe('One line on what you can do'),
       capabilities: z
         .array(z.object({ name: z.string(), description: z.string().optional() }))
-        .describe('Skills others can delegate to you, e.g. [{name:"lca-bom-match",description:"BOM matching"}]'),
+        .optional()
+        .describe('Skills to publish, e.g. [{name:"lca-bom-match",description:"BOM matching"}]; default: []'),
       visibility: z.enum(['owner', 'org', 'public']).optional().describe('Who can see you (default: org)'),
+      discoverable: z.boolean().optional().describe('Publish this Agent Card in discover results (default: false)'),
+      accepts_delegation: z
+        .boolean()
+        .optional()
+        .describe('Accept unsolicited messages (default: false). Enable only when this runtime has a dispatcher that wakes the agent and drains inbox.'),
     },
   },
   async (args) => {
     try {
-      const agent = await register(args);
+      const agent = await register({
+        name: args.name,
+        description: args.description,
+        capabilities: args.capabilities ?? [],
+        visibility: args.visibility,
+        discoverable: args.discoverable,
+        acceptsDelegation: args.accepts_delegation,
+      });
       startHeartbeat();
-      return ok(`Published ${args.capabilities.length} capabilities for ${config.agentId} — other agents can discover them now.\n${JSON.stringify(agent)}`);
+      return ok(
+        `Registered session ${config.agentId}.\n` +
+          `  capabilities      : ${args.capabilities?.length ?? 0}\n` +
+          `  discoverable      : ${args.discoverable ?? false}\n` +
+          `  accepts delegation: ${args.accepts_delegation ?? false}\n` +
+          `${JSON.stringify(agent)}`,
+      );
     } catch (e) {
       return fail(`Register failed: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -81,7 +100,7 @@ server.registerTool(
   {
     title: 'Send a message to another agent',
     description:
-      'Send a task or question directly to another agent (get its id from discover first). It lands in their inbox for them to handle. Before sending, make sure you give enough context and say what you expect back.',
+      'Send a task or question from this registered session to another agent (get its id from discover first). The recipient must accept delegation unless this is a validated reply.',
     inputSchema: {
       to: z.string().describe('Recipient agent id (from a discover result)'),
       body: z.string().describe('Message body: the task to delegate or the question to ask — give full context'),
@@ -104,7 +123,7 @@ server.registerTool(
   {
     title: 'Check your inbox',
     description:
-      'Read messages other agents sent you (unread only by default). After you handle them, pass ack=true to mark them read so you do not process them again. Delegated tasks and replies both arrive here.',
+      'Pull messages for this registered session (unread only by default). MCP does not portably wake an idle host agent; a runtime accepting delegation needs its own dispatcher to call this tool and start a turn.',
     inputSchema: {
       include_read: z.boolean().optional().describe('Include already-read messages (default: unread only)'),
       ack: z.boolean().optional().describe('Mark the returned batch as read (default: false; only ack once you have handled them)'),
@@ -130,7 +149,7 @@ server.registerTool(
   'agent_center_whoami',
   {
     title: 'Check connection status',
-    description: 'Show your Agent Center identity (whether you are authorized, who owns you, whether the Hub is reachable). Call this first when interconnection misbehaves.',
+    description: 'Show owner authorization, this MCP process session id, registration state, and Hub reachability.',
     inputSchema: {},
   },
   async () => {
@@ -144,6 +163,7 @@ server.registerTool(
         `  name    : ${config.agentName}\n` +
         `  owner   : ${config.owner || '(determined by token)'}\n` +
         `  kind    : ${config.agentKind}\n` +
+        `  registered: ${isRegistered() ? '✅ yes' : '❌ no (call agent_center_register)'}\n` +
         `  hub     : ${config.baseUrl}\n` +
         `  reachable: ${reachable ? '✅ yes' : '❌ no (token may be revoked, or Hub unreachable)'}`,
     );
@@ -151,9 +171,7 @@ server.registerTool(
 );
 
 async function probeReachable(): Promise<boolean> {
-  // Probe with discover: succeeds as long as the token is accepted and the Hub is reachable,
-  // regardless of whether we've registered yet (heartbeat 404s on an unregistered id, which
-  // would misreport "not registered yet" as "Hub unreachable").
+  // discover only requires owner authorization, so it distinguishes connectivity from registration.
   try {
     await discover();
     return true;
@@ -164,10 +182,6 @@ async function probeReachable(): Promise<boolean> {
 
 async function main(): Promise<void> {
   process.stderr.write(`[agent-center-mcp ${VERSION}] Hub=${config.baseUrl} id=${config.agentId}${config.token ? '' : ' ⚠️ AGENT_CENTER_TOKEN not set'}\n`);
-  if (config.token) {
-    await ensureIdentity();
-    startHeartbeat();
-  }
   await server.connect(new StdioServerTransport());
 }
 

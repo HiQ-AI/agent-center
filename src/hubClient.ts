@@ -6,7 +6,8 @@ export interface Capability {
   description?: string;
 }
 
-async function call<T>(path: string, init: RequestInit = {}, token = config.token): Promise<T> {
+async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = config.token;
   if (!token) throw new Error('AGENT_CENTER_TOKEN not set (run `agent-center login`, or set the env var)');
   // Only send Content-Type when there's a body — a bodyless POST/DELETE (e.g. heartbeat) with
   // Content-Type: application/json makes strict JSON parsers reject an empty body as a 400.
@@ -26,45 +27,44 @@ async function call<T>(path: string, init: RequestInit = {}, token = config.toke
   return data as T;
 }
 
-export interface IdentityInput {
-  id: string;
-  kind: 'nomad' | 'cowork' | 'personal';
-  name: string;
+let registered = false;
+
+export function isRegistered(): boolean {
+  return registered;
 }
 
-/** Provision the private identity used for send/inbox without publishing capabilities. */
-export async function ensureIdentity(
-  identity: IdentityInput = { id: config.agentId, kind: config.agentKind, name: config.agentName },
-  token = config.token,
-): Promise<unknown> {
-  const r = await call<{ agent: unknown }>(
-    '/api/agents/ensure',
-    { method: 'POST', body: JSON.stringify(identity) },
-    token,
-  );
-  return r.agent;
+function requireRegistration(): void {
+  if (!registered) {
+    throw new Error('this session is not registered; call agent_center_register first');
+  }
 }
 
 export async function register(input: {
   name: string;
   description?: string;
-  capabilities: Capability[];
+  capabilities?: Capability[];
   visibility?: 'owner' | 'org' | 'public';
+  discoverable?: boolean;
+  acceptsDelegation?: boolean;
 }): Promise<unknown> {
   const body = {
     id: config.agentId,
     kind: config.agentKind,
     name: input.name,
     description: input.description,
-    capabilities: input.capabilities,
+    capabilities: input.capabilities ?? [],
     visibility: input.visibility ?? 'org',
+    discoverable: input.discoverable ?? false,
+    acceptsDelegation: input.acceptsDelegation ?? false,
     // owner is derived from the token (enforced by the Hub); never sent here.
   };
   const r = await call<{ agent: unknown }>('/api/agents/register', { method: 'POST', body: JSON.stringify(body) });
+  registered = true;
   return r.agent;
 }
 
 export async function heartbeat(): Promise<boolean> {
+  requireRegistration();
   try {
     await call(`/api/agents/${encodeURIComponent(config.agentId)}/heartbeat`, { method: 'POST' });
     return true;
@@ -89,13 +89,14 @@ export interface InboxMessage {
   createdAt: string;
 }
 
-/** Send a directed message to an agent. from = the private identity provisioned at login/startup. */
+/** Send a directed message from the identity explicitly registered by this MCP session. */
 export async function sendMessage(input: {
   to: string;
   body: string;
   capability?: string;
   replyTo?: string;
 }): Promise<InboxMessage> {
+  requireRegistration();
   const r = await call<{ message: InboxMessage }>(
     `/api/agents/${encodeURIComponent(input.to)}/messages`,
     {
@@ -113,6 +114,7 @@ export async function sendMessage(input: {
 
 /** Read your own inbox (unread only by default). */
 export async function fetchInbox(opts: { unreadOnly?: boolean; limit?: number } = {}): Promise<InboxMessage[]> {
+  requireRegistration();
   const params = new URLSearchParams();
   if (opts.unreadOnly === false) params.set('unread', 'false');
   if (opts.limit) params.set('limit', String(opts.limit));
@@ -125,6 +127,7 @@ export async function fetchInbox(opts: { unreadOnly?: boolean; limit?: number } 
 
 /** Mark a message in your inbox as read. */
 export async function ackMessage(messageId: string): Promise<boolean> {
+  requireRegistration();
   await call(`/api/agents/${encodeURIComponent(config.agentId)}/messages/${encodeURIComponent(messageId)}/ack`, {
     method: 'POST',
   });

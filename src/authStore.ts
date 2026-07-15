@@ -1,14 +1,13 @@
 // Local credential store: ~/.agent-center/auth.json. Written by CLI `login`, read by the MCP server.
-// Holds only the Hub per-agent token + ownership; file mode 0600 (owner-readable only).
+// Holds only the owner-level Hub credential; session agent identity is never persisted here.
+// File mode 0600 (owner-readable only).
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 
 export interface StoredAuth {
-  token: string; // Hub per-agent token
+  token: string; // Hub credential scoped to one owner
   owner: string; // Cortex user_id
-  agentId: string;
-  agentName: string;
   hubUrl: string; // runtime Hub base
 }
 
