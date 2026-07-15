@@ -8,7 +8,7 @@ function sanitize(s: string): string {
 
 const stored = loadAuth();
 
-const hubUrl = (stored?.hubUrl ?? process.env.AGENT_CENTER_URL ?? 'https://warden.hiq.earth/hub').replace(/\/$/, '');
+const hubUrl = (stored?.hubUrl ?? process.env.AGENT_CENTER_URL ?? 'https://lab.hiq.earth/deck/hub').replace(/\/$/, '');
 const defaultId = process.env.AGENT_ID
   ? sanitize(process.env.AGENT_ID)
   : sanitize(`${userInfo().username}-${hostname()}`);

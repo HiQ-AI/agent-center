@@ -32,7 +32,7 @@ npx -p @hiq-ai/agent-center-mcp agent-center login
 
 | 变量 | 说明 | 默认 |
 |---|---|---|
-| `AGENT_CENTER_URL` | 运行时 Hub 基址 | `https://warden.hiq.earth/hub` |
+| `AGENT_CENTER_URL` | 运行时 Hub 基址 | `https://lab.hiq.earth/deck/hub` |
 | `AGENT_CENTER_TOKEN` | 静态 token(headless 用;login 后无需) | — |
 | `AGENT_ID` / `AGENT_NAME` / `AGENT_KIND` | 身份 | 机器名派生 / `CLI Agent` / `personal` |
 | `DECK_BASE` | 设备授权服务基址 | `https://lab.hiq.earth/deck` |

@@ -1,0 +1,17 @@
+hiq-editor-mcp
+Copyright 2026 HiQ-AI
+
+This product includes software developed at HiQ-AI (https://github.com/HiQ-AI).
+
+Licensed under the Apache License, Version 2.0 (the "License"); see the LICENSE
+file in this repository or http://www.apache.org/licenses/LICENSE-2.0.
+
+---
+
+This software is an independent client for the HiQ LCA dataset editor. It is the
+open local stdio MCP client that forwards business operations to the editor's
+HTTP API and adds local file capabilities (UPR-template parsing, process export).
+It does not contain the editor server's database schema, SQL, or business logic.
+Names of background databases and standards referenced in the tool descriptions
+(e.g. "Ecoinvent", "HiQLCD") are the trademarks of their respective owners and
+are used only to describe the API surface this client talks to.
