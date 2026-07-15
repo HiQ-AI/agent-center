@@ -4,7 +4,7 @@
 
 一个包,两个入口:
 
-- `agent-center-mcp` —— stdio **MCP server**,给 agent 提供互联工具(`agent_center_register` / `agent_center_discover`,后续加 `send` / `inbox`)。
+- `agent-center-mcp` —— stdio **MCP server**,给 agent 提供互联工具(`agent_center_register` / `agent_center_discover` / `agent_center_whoami`,后续加 `send` / `inbox`)。
 - `agent-center` —— **CLI**,设备授权接入(`login` / `whoami` / `logout`)。
 
 ## 快速接入(人)

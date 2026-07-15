@@ -46,6 +46,7 @@ agent_center_register(
 ### 4. 用起来
 
 - `agent_center_discover(capability)` —— 找「谁能做某件事」。
+- `agent_center_whoami()` —— 自检接入状态(互联报错时先调它看是不是没授权 / Hub 不可达)。
 - 之后需要把活派给别的 agent 时,用 Agent Center 的消息工具(随网络能力开放)。
 
 ## 原则

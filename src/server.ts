@@ -12,6 +12,17 @@ import { z } from 'zod';
 import { config } from './config.js';
 import { register, heartbeat, discover } from './hubClient.js';
 
+async function probeReachable(): Promise<boolean> {
+  // 用 discover 探活:只要 token 被接受、Hub 可达即成立,不依赖自己是否已 register
+  // (heartbeat 对未注册的 id 会 404,会把「还没注册」误报成「不可达」)。
+  try {
+    await discover();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const VERSION = '0.0.1';
 
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -73,6 +84,30 @@ server.registerTool(
     } catch (e) {
       return fail(`发现失败:${e instanceof Error ? e.message : String(e)}`);
     }
+  },
+);
+
+server.registerTool(
+  'agent_center_whoami',
+  {
+    title: '查看接入状态',
+    description: '看自己在 Agent Center 的接入身份(是否已授权、归属谁、Hub 是否可达)。互联出问题时先调它自检。',
+    inputSchema: {},
+  },
+  async () => {
+    if (!config.token) {
+      return ok('未接入:还没有凭据。运行 `npx -y @hiq-ai/agent-center login` 授权,或设置 AGENT_CENTER_TOKEN。');
+    }
+    const reachable = await probeReachable();
+    return ok(
+      `已接入 Agent Center。\n` +
+        `  id     : ${config.agentId}\n` +
+        `  name   : ${config.agentName}\n` +
+        `  owner  : ${config.owner || '(由 token 决定)'}\n` +
+        `  kind   : ${config.agentKind}\n` +
+        `  hub    : ${config.baseUrl}\n` +
+        `  可达   : ${reachable ? '✅ 是' : '❌ 否(token 可能已吊销或 Hub 不可达)'}`,
+    );
   },
 );
 
