@@ -11,6 +11,7 @@
 import { spawn } from 'node:child_process';
 import { config } from './config.js';
 import { loadAuth, saveAuth, clearAuth, authFilePath } from './authStore.js';
+import { ensureIdentity } from './hubClient.js';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -73,8 +74,9 @@ async function login(): Promise<void> {
     if (res.ok) {
       const { access_token, owner } = (await res.json()) as { access_token: string; owner: string };
       saveAuth({ token: access_token, owner, agentId, agentName, hubUrl: config.baseUrl });
-      console.log(`\n\n  ✅ Connected. Identity owner=${owner}; credential stored at ${authFilePath}`);
-      console.log('  agent-center-mcp now attaches it automatically — the agent has its interconnection tools.\n');
+      await ensureIdentity({ id: agentId, kind: config.agentKind, name: agentName }, access_token);
+      console.log(`\n\n  ✅ Connected and ready. Identity owner=${owner}; credential stored at ${authFilePath}`);
+      console.log('  discover/send/inbox work immediately; publish capabilities with agent_center_register when wanted.\n');
       return;
     }
     console.error(`\n  Authorization failed: ${res.status} ${await res.text()}`);

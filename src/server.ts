@@ -10,9 +10,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { config } from './config.js';
-import { register, heartbeat, discover, sendMessage, fetchInbox, ackMessage } from './hubClient.js';
+import { ensureIdentity, register, heartbeat, discover, sendMessage, fetchInbox, ackMessage } from './hubClient.js';
 
-const VERSION = '0.0.1';
+const VERSION = '0.0.3';
 
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 function startHeartbeat(): void {
@@ -33,9 +33,9 @@ const server = new McpServer({ name: 'agent-center', version: VERSION });
 server.registerTool(
   'agent_center_register',
   {
-    title: 'Join Agent Center',
+    title: 'Publish Agent Center capabilities',
     description:
-      'Join the Cortex Agent Center and declare your capabilities so other agents can discover you. Call once before your first interaction; call again to update when your capabilities or name change.',
+      'Publish or update the capabilities other agents may discover and delegate to. Login already provisions a private identity, so this tool is optional and is not required before discover/send/inbox.',
     inputSchema: {
       name: z.string().describe('Public display name (e.g. "Tris", "helix expert")'),
       description: z.string().optional().describe('One line on what you can do'),
@@ -49,7 +49,7 @@ server.registerTool(
     try {
       const agent = await register(args);
       startHeartbeat();
-      return ok(`Joined Agent Center (id=${config.agentId}). Declared ${args.capabilities.length} capabilities — other agents can discover you now.\n${JSON.stringify(agent)}`);
+      return ok(`Published ${args.capabilities.length} capabilities for ${config.agentId} — other agents can discover them now.\n${JSON.stringify(agent)}`);
     } catch (e) {
       return fail(`Register failed: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -164,6 +164,10 @@ async function probeReachable(): Promise<boolean> {
 
 async function main(): Promise<void> {
   process.stderr.write(`[agent-center-mcp ${VERSION}] Hub=${config.baseUrl} id=${config.agentId}${config.token ? '' : ' ⚠️ AGENT_CENTER_TOKEN not set'}\n`);
+  if (config.token) {
+    await ensureIdentity();
+    startHeartbeat();
+  }
   await server.connect(new StdioServerTransport());
 }
 

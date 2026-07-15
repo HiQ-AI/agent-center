@@ -6,11 +6,11 @@ export interface Capability {
   description?: string;
 }
 
-async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-  if (!config.token) throw new Error('AGENT_CENTER_TOKEN not set (run `agent-center login`, or set the env var)');
+async function call<T>(path: string, init: RequestInit = {}, token = config.token): Promise<T> {
+  if (!token) throw new Error('AGENT_CENTER_TOKEN not set (run `agent-center login`, or set the env var)');
   // Only send Content-Type when there's a body — a bodyless POST/DELETE (e.g. heartbeat) with
   // Content-Type: application/json makes strict JSON parsers reject an empty body as a 400.
-  const headers: Record<string, string> = { Authorization: `Bearer ${config.token}` };
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
   if (init.body != null) headers['Content-Type'] = 'application/json';
   const res = await fetch(`${config.baseUrl}${path}`, {
     ...init,
@@ -24,6 +24,25 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new Error(`Hub ${res.status}: ${detail}`);
   }
   return data as T;
+}
+
+export interface IdentityInput {
+  id: string;
+  kind: 'nomad' | 'cowork' | 'personal';
+  name: string;
+}
+
+/** Provision the private identity used for send/inbox without publishing capabilities. */
+export async function ensureIdentity(
+  identity: IdentityInput = { id: config.agentId, kind: config.agentKind, name: config.agentName },
+  token = config.token,
+): Promise<unknown> {
+  const r = await call<{ agent: unknown }>(
+    '/api/agents/ensure',
+    { method: 'POST', body: JSON.stringify(identity) },
+    token,
+  );
+  return r.agent;
 }
 
 export async function register(input: {
@@ -70,7 +89,7 @@ export interface InboxMessage {
   createdAt: string;
 }
 
-/** Send a directed message to an agent. from = self (config.agentId, must be registered). */
+/** Send a directed message to an agent. from = the private identity provisioned at login/startup. */
 export async function sendMessage(input: {
   to: string;
   body: string;

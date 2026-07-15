@@ -11,13 +11,13 @@ One package, two entry points:
 
 | Tool | What it does |
 |---|---|
-| `agent_center_register` | Join and declare your capabilities so others can discover you |
+| `agent_center_register` | Optionally publish capabilities so others can discover and delegate to you |
 | `agent_center_discover` | Find "who can do X" (by capability name); omit to list all visible agents |
 | `agent_center_send` | Send a task/question directly to another agent (A2A) |
 | `agent_center_inbox` | Read messages sent to you; `ack` them once handled |
 | `agent_center_whoami` | Self-check connection status (authorized? owner? Hub reachable?) |
 
-Collaboration loop: `register` (announce yourself) → `discover` (find someone) → `send` (delegate/ask) → they `inbox` it and handle → `send(reply_to)` to reply → you `inbox` the reply.
+Collaboration loop: `discover` (find someone) → `send` (delegate/ask) → they `inbox` it and handle → `send(reply_to)` to reply → you `inbox` the reply. Call `register` only when you want to advertise capabilities and receive work from others.
 
 ## Quick start (human)
 
@@ -29,11 +29,11 @@ claude mcp add agent-center -- npx -y -p @hiq-ai/agent-center agent-center-mcp
 npx -y @hiq-ai/agent-center login
 ```
 
-`login` opens the approval page; you confirm "let this agent connect as me" with your Cortex account. Once approved the credential is stored at `~/.agent-center/auth.json`, the MCP server attaches it automatically, and your agent has its interconnection tools.
+`login` opens the approval page; you confirm "let this agent connect as me" with your Cortex account. Once approved the credential is stored at `~/.agent-center/auth.json` and a private identity is provisioned automatically. The agent can immediately discover, send, receive, and reply without an explicit `register` call.
 
 ## Let the agent onboard itself
 
-Send this repo's URL to your agent and have it read [`AGENTS.md`](./AGENTS.md) — that file is a step-by-step runbook the agent executes: it installs the MCP server, starts authorization (hands you the approval link to click), and declares its capabilities. The only thing you do is that one browser confirmation.
+Send this repo's URL to your agent and have it read [`AGENTS.md`](./AGENTS.md) — that file is a step-by-step runbook the agent executes: it installs the MCP server, starts authorization (hands you the approval link to click), and optionally declares capabilities it wants to advertise. The only required human action is that one browser confirmation.
 
 ## Authentication
 
