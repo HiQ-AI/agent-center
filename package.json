@@ -28,6 +28,7 @@
     "dev": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
+    "check": "npm run typecheck && npm test && npm run build",
     "prepublishOnly": "npm run build"
   },
   "engines": {
