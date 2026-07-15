@@ -1,27 +1,16 @@
 #!/usr/bin/env node
 /**
- * Agent Center 连接器 —— stdio MCP server。`npx -y -p @hiq-ai/agent-center agent-center-mcp` 运行。
- * 让任意 agent(Claude Code / Cortex Cowork / 自建)接入 Cortex Agent Center Hub:
- * 声明能力(register)、发现别的 agent(discover)。全出站 HTTP,无入站、NAT 免谈。
- * host 经 env 注入 AGENT_CENTER_URL / AGENT_CENTER_TOKEN / AGENT_ID / AGENT_NAME / AGENT_KIND。
- * A2A 定向消息(send / inbox)随 Hub 的 P-C 能力开放后加。
+ * Agent Center connector — stdio MCP server. Run via `npx -y -p @hiq-ai/agent-center agent-center-mcp`.
+ * Lets any agent (Claude Code / Cortex Cowork / your own) join the Cortex Agent Center Hub:
+ * declare capabilities (register), find other agents (discover), delegate directly (send),
+ * receive work (inbox), self-check (whoami). All outbound HTTP (inbox is polled) — no inbound, NAT-friendly.
+ * The host injects AGENT_CENTER_URL / AGENT_CENTER_TOKEN / AGENT_ID / AGENT_NAME / AGENT_KIND via env.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { config } from './config.js';
-import { register, heartbeat, discover } from './hubClient.js';
-
-async function probeReachable(): Promise<boolean> {
-  // 用 discover 探活:只要 token 被接受、Hub 可达即成立,不依赖自己是否已 register
-  // (heartbeat 对未注册的 id 会 404,会把「还没注册」误报成「不可达」)。
-  try {
-    await discover();
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { register, heartbeat, discover, sendMessage, fetchInbox, ackMessage } from './hubClient.js';
 
 const VERSION = '0.0.1';
 
@@ -44,25 +33,25 @@ const server = new McpServer({ name: 'agent-center', version: VERSION });
 server.registerTool(
   'agent_center_register',
   {
-    title: '接入 Agent Center',
+    title: 'Join Agent Center',
     description:
-      '把自己接入 Cortex Agent Center 并声明能力,让别的 agent 能发现你。首次互联前调用一次;能力/名字变了再调更新。',
+      'Join the Cortex Agent Center and declare your capabilities so other agents can discover you. Call once before your first interaction; call again to update when your capabilities or name change.',
     inputSchema: {
-      name: z.string().describe('对外展示名(如「翠丝」「helix 专家」)'),
-      description: z.string().optional().describe('一句话说明你能干什么'),
+      name: z.string().describe('Public display name (e.g. "Tris", "helix expert")'),
+      description: z.string().optional().describe('One line on what you can do'),
       capabilities: z
         .array(z.object({ name: z.string(), description: z.string().optional() }))
-        .describe('可被别人委派的技能清单,如 [{name:"lca-bom-match",description:"BOM 匹配"}]'),
-      visibility: z.enum(['owner', 'org', 'public']).optional().describe('可见范围(默认 org)'),
+        .describe('Skills others can delegate to you, e.g. [{name:"lca-bom-match",description:"BOM matching"}]'),
+      visibility: z.enum(['owner', 'org', 'public']).optional().describe('Who can see you (default: org)'),
     },
   },
   async (args) => {
     try {
       const agent = await register(args);
       startHeartbeat();
-      return ok(`已接入 Agent Center(id=${config.agentId})。声明了 ${args.capabilities.length} 项能力,现在别的 agent 能发现你了。\n${JSON.stringify(agent)}`);
+      return ok(`Joined Agent Center (id=${config.agentId}). Declared ${args.capabilities.length} capabilities — other agents can discover you now.\n${JSON.stringify(agent)}`);
     } catch (e) {
-      return fail(`接入失败:${e instanceof Error ? e.message : String(e)}`);
+      return fail(`Register failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   },
 );
@@ -70,19 +59,69 @@ server.registerTool(
 server.registerTool(
   'agent_center_discover',
   {
-    title: '发现 agent',
-    description: '在 Agent Center 里找「谁能做某件事」。给能力名精确匹配;不给则列出所有可见 agent。',
+    title: 'Discover agents',
+    description: 'Find "who can do X" in the Agent Center. Pass a capability name for an exact match; omit it to list every visible agent.',
     inputSchema: {
-      capability: z.string().optional().describe('要找的能力名,如 "lca-bom-match";留空 = 列全部'),
+      capability: z.string().optional().describe('Capability name to look for, e.g. "lca-bom-match"; omit to list all'),
     },
   },
   async (args) => {
     try {
       const agents = await discover(args.capability);
-      if (agents.length === 0) return ok(args.capability ? `没有 agent 声明能力「${args.capability}」。` : '目录里还没有别的 agent。');
-      return ok(`找到 ${agents.length} 个:\n${JSON.stringify(agents, null, 1)}`);
+      if (agents.length === 0) return ok(args.capability ? `No agent declares capability "${args.capability}".` : 'No other agents in the directory yet.');
+      return ok(`Found ${agents.length}:\n${JSON.stringify(agents, null, 1)}`);
     } catch (e) {
-      return fail(`发现失败:${e instanceof Error ? e.message : String(e)}`);
+      return fail(`Discover failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  },
+);
+
+server.registerTool(
+  'agent_center_send',
+  {
+    title: 'Send a message to another agent',
+    description:
+      'Send a task or question directly to another agent (get its id from discover first). It lands in their inbox for them to handle. Before sending, make sure you give enough context and say what you expect back.',
+    inputSchema: {
+      to: z.string().describe('Recipient agent id (from a discover result)'),
+      body: z.string().describe('Message body: the task to delegate or the question to ask — give full context'),
+      capability: z.string().optional().describe('Which of their capabilities you want (optional; a capability name they declared)'),
+      reply_to: z.string().optional().describe('Reply to a message id you received (threads the conversation; optional)'),
+    },
+  },
+  async (args) => {
+    try {
+      const msg = await sendMessage({ to: args.to, body: args.body, capability: args.capability, replyTo: args.reply_to });
+      return ok(`Sent to ${args.to} (message id=${msg.id}). They'll see it next time they check their inbox; any reply lands in yours.`);
+    } catch (e) {
+      return fail(`Send failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  },
+);
+
+server.registerTool(
+  'agent_center_inbox',
+  {
+    title: 'Check your inbox',
+    description:
+      'Read messages other agents sent you (unread only by default). After you handle them, pass ack=true to mark them read so you do not process them again. Delegated tasks and replies both arrive here.',
+    inputSchema: {
+      include_read: z.boolean().optional().describe('Include already-read messages (default: unread only)'),
+      ack: z.boolean().optional().describe('Mark the returned batch as read (default: false; only ack once you have handled them)'),
+      limit: z.number().int().positive().optional().describe('Max messages to fetch (default 50, cap 200)'),
+    },
+  },
+  async (args) => {
+    try {
+      const msgs = await fetchInbox({ unreadOnly: !args.include_read, limit: args.limit });
+      if (msgs.length === 0) return ok('Inbox empty.');
+      if (args.ack) await Promise.all(msgs.map((m) => ackMessage(m.id).catch(() => false)));
+      const lines = msgs
+        .map((m) => `• [${m.id}] from ${m.fromAgent}${m.capability ? ` (capability: ${m.capability})` : ''}${m.replyTo ? ` ↩︎${m.replyTo}` : ''}\n  ${m.body}`)
+        .join('\n');
+      return ok(`${msgs.length} message(s)${args.ack ? ' (marked read)' : ' (not marked read; pass ack=true once handled)'}:\n${lines}`);
+    } catch (e) {
+      return fail(`Inbox read failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   },
 );
@@ -90,29 +129,41 @@ server.registerTool(
 server.registerTool(
   'agent_center_whoami',
   {
-    title: '查看接入状态',
-    description: '看自己在 Agent Center 的接入身份(是否已授权、归属谁、Hub 是否可达)。互联出问题时先调它自检。',
+    title: 'Check connection status',
+    description: 'Show your Agent Center identity (whether you are authorized, who owns you, whether the Hub is reachable). Call this first when interconnection misbehaves.',
     inputSchema: {},
   },
   async () => {
     if (!config.token) {
-      return ok('未接入:还没有凭据。运行 `npx -y @hiq-ai/agent-center login` 授权,或设置 AGENT_CENTER_TOKEN。');
+      return ok('Not connected: no credential yet. Run `npx -y @hiq-ai/agent-center login` to authorize, or set AGENT_CENTER_TOKEN.');
     }
     const reachable = await probeReachable();
     return ok(
-      `已接入 Agent Center。\n` +
-        `  id     : ${config.agentId}\n` +
-        `  name   : ${config.agentName}\n` +
-        `  owner  : ${config.owner || '(由 token 决定)'}\n` +
-        `  kind   : ${config.agentKind}\n` +
-        `  hub    : ${config.baseUrl}\n` +
-        `  可达   : ${reachable ? '✅ 是' : '❌ 否(token 可能已吊销或 Hub 不可达)'}`,
+      `Connected to Agent Center.\n` +
+        `  id      : ${config.agentId}\n` +
+        `  name    : ${config.agentName}\n` +
+        `  owner   : ${config.owner || '(determined by token)'}\n` +
+        `  kind    : ${config.agentKind}\n` +
+        `  hub     : ${config.baseUrl}\n` +
+        `  reachable: ${reachable ? '✅ yes' : '❌ no (token may be revoked, or Hub unreachable)'}`,
     );
   },
 );
 
+async function probeReachable(): Promise<boolean> {
+  // Probe with discover: succeeds as long as the token is accepted and the Hub is reachable,
+  // regardless of whether we've registered yet (heartbeat 404s on an unregistered id, which
+  // would misreport "not registered yet" as "Hub unreachable").
+  try {
+    await discover();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function main(): Promise<void> {
-  process.stderr.write(`[agent-center-mcp ${VERSION}] Hub=${config.baseUrl} id=${config.agentId}${config.token ? '' : ' ⚠️ 未配置 AGENT_CENTER_TOKEN'}\n`);
+  process.stderr.write(`[agent-center-mcp ${VERSION}] Hub=${config.baseUrl} id=${config.agentId}${config.token ? '' : ' ⚠️ AGENT_CENTER_TOKEN not set'}\n`);
   await server.connect(new StdioServerTransport());
 }
 

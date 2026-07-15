@@ -1,7 +1,7 @@
 {
   "name": "@hiq-ai/agent-center",
   "version": "0.0.1",
-  "description": "Agent Center 连接器 —— 让任意 agent 接入 Cortex Agent Center Hub:声明能力、发现彼此、互相通信。",
+  "description": "Agent Center connector — let any agent join the Cortex Agent Center Hub: declare capabilities, discover each other, and message directly.",
   "type": "module",
   "bin": {
     "agent-center-mcp": "./dist/server.js",

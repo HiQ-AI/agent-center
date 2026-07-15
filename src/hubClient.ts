@@ -1,4 +1,4 @@
-// Hub HTTP 客户端(全出站,NAT 免谈)。register / heartbeat / discover。
+// Hub HTTP client (all outbound, NAT-friendly). register / heartbeat / discover / send / inbox / ack.
 import { config } from './config.js';
 
 export interface Capability {
@@ -7,7 +7,7 @@ export interface Capability {
 }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-  if (!config.token) throw new Error('未配置 AGENT_CENTER_TOKEN(在 warden「接入」页发放一枚)');
+  if (!config.token) throw new Error('AGENT_CENTER_TOKEN not set (run `agent-center login`, or set the env var)');
   const res = await fetch(`${config.baseUrl}${path}`, {
     ...init,
     signal: AbortSignal.timeout(10000),
@@ -35,7 +35,7 @@ export async function register(input: {
     description: input.description,
     capabilities: input.capabilities,
     visibility: input.visibility ?? 'org',
-    // owner 由 token 决定(Hub 强制),这里不传。
+    // owner is derived from the token (enforced by the Hub); never sent here.
   };
   const r = await call<{ agent: unknown }>('/api/agents/register', { method: 'POST', body: JSON.stringify(body) });
   return r.agent;
@@ -54,4 +54,56 @@ export async function discover(capability?: string): Promise<unknown[]> {
   const q = capability ? `?capability=${encodeURIComponent(capability)}` : '';
   const r = await call<{ agents: unknown[] }>(`/api/agents/discover${q}`);
   return r.agents;
+}
+
+export interface InboxMessage {
+  id: string;
+  fromAgent: string;
+  toAgent: string;
+  capability: string | null;
+  body: string;
+  replyTo: string | null;
+  createdAt: string;
+}
+
+/** Send a directed message to an agent. from = self (config.agentId, must be registered). */
+export async function sendMessage(input: {
+  to: string;
+  body: string;
+  capability?: string;
+  replyTo?: string;
+}): Promise<InboxMessage> {
+  const r = await call<{ message: InboxMessage }>(
+    `/api/agents/${encodeURIComponent(input.to)}/messages`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        from: config.agentId,
+        body: input.body,
+        capability: input.capability,
+        replyTo: input.replyTo,
+      }),
+    },
+  );
+  return r.message;
+}
+
+/** Read your own inbox (unread only by default). */
+export async function fetchInbox(opts: { unreadOnly?: boolean; limit?: number } = {}): Promise<InboxMessage[]> {
+  const params = new URLSearchParams();
+  if (opts.unreadOnly === false) params.set('unread', 'false');
+  if (opts.limit) params.set('limit', String(opts.limit));
+  const qs = params.toString();
+  const r = await call<{ messages: InboxMessage[] }>(
+    `/api/agents/${encodeURIComponent(config.agentId)}/inbox${qs ? `?${qs}` : ''}`,
+  );
+  return r.messages;
+}
+
+/** Mark a message in your inbox as read. */
+export async function ackMessage(messageId: string): Promise<boolean> {
+  await call(`/api/agents/${encodeURIComponent(config.agentId)}/messages/${encodeURIComponent(messageId)}/ack`, {
+    method: 'POST',
+  });
+  return true;
 }

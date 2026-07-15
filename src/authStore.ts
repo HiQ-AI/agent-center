@@ -1,15 +1,15 @@
-// 本地凭据存储:~/.agent-center/auth.json。CLI `login` 写入,MCP server 读取。
-// 只存 Hub 的 per-agent token + 归属;文件权限 0600(仅本人可读)。
+// Local credential store: ~/.agent-center/auth.json. Written by CLI `login`, read by the MCP server.
+// Holds only the Hub per-agent token + ownership; file mode 0600 (owner-readable only).
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 
 export interface StoredAuth {
-  token: string; // mikoshi per-agent token
+  token: string; // Hub per-agent token
   owner: string; // Cortex user_id
   agentId: string;
   agentName: string;
-  hubUrl: string; // 运行时 Hub 基址
+  hubUrl: string; // runtime Hub base
 }
 
 const DIR = join(homedir(), '.agent-center');
@@ -33,7 +33,7 @@ export function clearAuth(): void {
   try {
     rmSync(FILE);
   } catch {
-    /* 已经没有就算了 */
+    /* already gone — fine */
   }
 }
 
