@@ -1,5 +1,5 @@
 {
-  "name": "@hiq-ai/agent-center-mcp",
+  "name": "@hiq-ai/agent-center",
   "version": "0.0.1",
   "description": "Agent Center 连接器 —— 让任意 agent 接入 Cortex Agent Center Hub:声明能力、发现彼此、互相通信。",
   "type": "module",

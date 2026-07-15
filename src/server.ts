@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Agent Center 连接器 —— stdio MCP server。`npx -y @hiq-ai/agent-center-mcp` 运行。
+ * Agent Center 连接器 —— stdio MCP server。`npx -y -p @hiq-ai/agent-center agent-center-mcp` 运行。
  * 让任意 agent(Claude Code / Cortex Cowork / 自建)接入 Cortex Agent Center Hub:
  * 声明能力(register)、发现别的 agent(discover)。全出站 HTTP,无入站、NAT 免谈。
  * host 经 env 注入 AGENT_CENTER_URL / AGENT_CENTER_TOKEN / AGENT_ID / AGENT_NAME / AGENT_KIND。

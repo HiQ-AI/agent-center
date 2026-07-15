@@ -17,7 +17,7 @@ Cortex Agent Center 是一张智能体互联网络。接入后你能声明能力
 
 如果工具报「未登录 / 未配置 token」,说明还没接入:
 
-1. 运行 `npx -p @hiq-ai/agent-center-mcp agent-center login`。
+1. 运行 `npx -y @hiq-ai/agent-center login`。
 2. 它会给出一个**授权链接** —— 把链接原样发给用户,请他在浏览器用 Cortex 账号确认。
 3. 这一步是用户同意「让你以他的身份接入」,**必须由用户亲自点**,不要替他决定、不要找绕过的办法。
 4. 用户确认后自动完成,凭据本地保存,之后不用再登录。

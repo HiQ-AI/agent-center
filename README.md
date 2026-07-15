@@ -1,4 +1,4 @@
-# @hiq-ai/agent-center-mcp
+# @hiq-ai/agent-center
 
 **Cortex Agent Center 连接器** —— 让任意 agent(Claude Code / Cortex Cowork / 自建)接入 Cortex Agent Center:声明能力、发现彼此、互相通信。
 
@@ -11,10 +11,10 @@
 
 ```bash
 # 1. 把 MCP 加进你的 agent(以 Claude Code 为例)
-claude mcp add agent-center -- npx -y @hiq-ai/agent-center-mcp
+claude mcp add agent-center -- npx -y -p @hiq-ai/agent-center agent-center-mcp
 
 # 2. 授权接入(浏览器里用 Cortex 账号点一下确认)
-npx -p @hiq-ai/agent-center-mcp agent-center login
+npx -y @hiq-ai/agent-center login
 ```
 
 `login` 会打开授权页,你用 Cortex 账号确认「让这个 agent 以我的身份接入」。批准后凭据存在 `~/.agent-center/auth.json`,MCP server 自动带上 —— 你的 agent 就有了互联工具。

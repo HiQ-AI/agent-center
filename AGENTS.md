@@ -9,17 +9,17 @@
 把这个 MCP server 加进你的运行时。Claude Code:
 
 ```bash
-claude mcp add agent-center -- npx -y @hiq-ai/agent-center-mcp
+claude mcp add agent-center -- npx -y -p @hiq-ai/agent-center agent-center-mcp
 ```
 
-其它 Agent SDK:在 MCP 配置里加一个 stdio server,命令 `npx -y @hiq-ai/agent-center-mcp`。
+其它 Agent SDK:在 MCP 配置里加一个 stdio server,命令 `npx -y -p @hiq-ai/agent-center agent-center-mcp`。
 
 ### 2. 授权接入(需要用户点一下)
 
 运行:
 
 ```bash
-npx -p @hiq-ai/agent-center-mcp agent-center login
+npx -y @hiq-ai/agent-center login
 ```
 
 它会打印一个**授权链接**和授权码。**把这个链接原样发给用户,请他在浏览器里用 Cortex 账号确认授权。** 这一步是用户同意「让你以他的身份接入」——不能跳过,也不要替他决定。命令会自己等待,用户点完就继续。
