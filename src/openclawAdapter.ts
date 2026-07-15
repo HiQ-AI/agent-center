@@ -3,25 +3,25 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { createShutdownController, formatInboundTask, runDeliveryStream } from './deliveryAdapter.js';
-import type { InboxMessage } from './hubClient.js';
+import type { DeliveryEvent } from './hubClient.js';
 
 function arg(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
-export function openClawRequestBody(message: InboxMessage, openClawAgent: string): Record<string, unknown> {
+export function openClawRequestBody(event: DeliveryEvent, openClawAgent: string): Record<string, unknown> {
   return {
     name: 'Agent Center',
     agentId: openClawAgent,
-    message: formatInboundTask(message),
+    message: formatInboundTask(event),
     wakeMode: 'now',
     deliver: false,
   };
 }
 
 export async function wakeOpenClaw(
-  message: InboxMessage,
+  event: DeliveryEvent,
   options: { url: string; token: string; openClawAgent: string },
 ): Promise<void> {
   const response = await fetch(options.url, {
@@ -30,7 +30,7 @@ export async function wakeOpenClaw(
       Authorization: `Bearer ${options.token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(openClawRequestBody(message, options.openClawAgent)),
+    body: JSON.stringify(openClawRequestBody(event, options.openClawAgent)),
     signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) {
@@ -60,7 +60,7 @@ async function main(): Promise<void> {
   );
   await runDeliveryStream(
     agentId,
-    (message) => wakeOpenClaw(message, options),
+    (event) => wakeOpenClaw(event, options),
     controller.signal,
     (message) => process.stderr.write(`[agent-center-openclaw] ${message}\n`),
   );

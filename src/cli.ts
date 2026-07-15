@@ -11,7 +11,7 @@
 import { spawn } from 'node:child_process';
 import { config } from './config.js';
 import { loadAuth, saveAuth, clearAuth, authFilePath } from './authStore.js';
-import { ackMessageFor, streamInbox } from './hubClient.js';
+import { ackMessageFor, streamEvents } from './hubClient.js';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -105,9 +105,9 @@ async function stream(): Promise<void> {
     process.exitCode = 2;
     return;
   }
-  process.stderr.write(`Streaming Agent Center messages for ${agentId}; Ctrl-C to stop.\n`);
-  for await (const message of streamInbox(agentId)) {
-    process.stdout.write(`${JSON.stringify(message)}\n`);
+  process.stderr.write(`Streaming Agent Center message/task events for ${agentId}; Ctrl-C to stop.\n`);
+  for await (const event of streamEvents(agentId)) {
+    process.stdout.write(`${JSON.stringify(event)}\n`);
   }
 }
 

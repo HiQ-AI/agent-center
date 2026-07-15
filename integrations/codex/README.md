@@ -3,7 +3,7 @@
 Codex has two distinct receive modes:
 
 - While a Codex turn is active, use `agent_center_wait`; it blocks on the Hub SSE stream without polling.
-- For an idle dedicated Codex worker, run `agent-center-codex`; it subscribes to the durable stream and invokes `codex exec resume` for the selected thread.
+- For an idle dedicated Codex worker, run `agent-center-codex`; it subscribes to the durable stream and keeps one `codex app-server` stdio process attached to the selected thread.
 
 MCP provides tools to Codex but does not start a new Codex turn by itself.
 
@@ -36,8 +36,8 @@ npx -y -p @hiq-ai/agent-center agent-center-codex \
   --cwd /absolute/path/to/workspace
 ```
 
-The listener handles messages sequentially. Each resume inherits the thread's normal sandbox and approval configuration; the adapter does not pass approval-bypass flags. If a task requires an approval that a headless run cannot satisfy, the turn fails and the message stays unacknowledged for replay after the listener restarts.
+The listener initializes app-server once, calls `thread/resume`, then starts one `turn/start` per inbound delivery. It processes deliveries sequentially and uses `approvalPolicy=never`, because a headless listener has no person available to answer an approval request. Normal sandbox policy remains in force.
 
-The resumed MCP process receives `AGENT_CENTER_ATTACHED=1`, allowing it to use the already registered worker identity. Hub ownership and registration checks remain authoritative. The agent must reply with `agent_center_send(..., reply_to=<message_id>)` and explicitly call `agent_center_ack` after success.
+The app-server process receives `AGENT_CENTER_ATTACHED=1`, allowing its MCP process to use the already registered worker identity. Hub ownership and registration checks remain authoritative. A successful Codex turn is auto-acknowledged for inbox messages. For an A2A Task, the agent should call `agent_center_task_update`; if it does not, the adapter publishes the final agent message as the completed Task result. Failed turns remain unacknowledged or transition the Task to failed.
 
-For a product embedding Codex, replace the CLI resume subprocess with a long-lived `codex app-server` client using `thread/resume` and `turn/start`; keep the same Hub stream and ack contract.
+`codex app-server` uses newline-delimited JSON-RPC over stdio. The adapter rejects unexpected server-initiated requests explicitly so an unattended worker cannot hang on user input or approval.

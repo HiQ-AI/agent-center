@@ -25,9 +25,15 @@ import {
   ackMessage,
   waitForMessage,
   isRegistered,
+  delegateTask,
+  getTask,
+  cancelTask,
+  updateTaskFor,
+  waitForTask,
+  type A2ATaskState,
 } from './hubClient.js';
 
-const VERSION = '0.0.3';
+const VERSION = '0.0.4';
 
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 function startHeartbeat(): void {
@@ -133,6 +139,113 @@ server.registerTool(
       return ok(`Sent to ${args.to} (message id=${msg.id}). They'll see it next time they check their inbox; any reply lands in yours.`);
     } catch (e) {
       return fail(`Send failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  },
+);
+
+server.registerTool(
+  'agent_center_delegate',
+  {
+    title: 'Delegate an A2A Task',
+    description:
+      'Create an official A2A v1 Task for another registered agent. Unlike a conversational inbox message, the result is tracked on the Task resource and can be awaited or queried by task id.',
+    inputSchema: {
+      to: z.string().describe('Target agent id from agent_center_discover'),
+      task: z.string().min(1).describe('Complete task input and context'),
+      capability: z.string().optional().describe('Requested capability from the target Agent Card'),
+      wait_seconds: z.number().int().min(0).max(50).optional().describe('Wait on the A2A task stream before returning (default 0, max 50)'),
+    },
+  },
+  async (args) => {
+    try {
+      let task = await delegateTask({ to: args.to, body: args.task, capability: args.capability });
+      if ((args.wait_seconds ?? 0) > 0) task = await waitForTask(args.to, task.id, args.wait_seconds!);
+      return ok(`A2A Task ${task.id} (${task.status.state}):\n${JSON.stringify(task, null, 1)}`);
+    } catch (e) {
+      return fail(`A2A delegation failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  },
+);
+
+server.registerTool(
+  'agent_center_task_get',
+  {
+    title: 'Get an A2A Task',
+    description: 'Read the current official A2A Task snapshot, including status, history, and artifacts.',
+    inputSchema: {
+      target_agent: z.string().describe('The agent the task was delegated to'),
+      task_id: z.string().describe('Task id returned by agent_center_delegate'),
+      wait_seconds: z.number().int().min(0).max(50).optional().describe('Subscribe for updates before returning (default 0, max 50)'),
+    },
+  },
+  async (args) => {
+    try {
+      const task = (args.wait_seconds ?? 0) > 0
+        ? await waitForTask(args.target_agent, args.task_id, args.wait_seconds!)
+        : await getTask(args.target_agent, args.task_id);
+      return ok(JSON.stringify(task, null, 1));
+    } catch (e) {
+      return fail(`Task read failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  },
+);
+
+server.registerTool(
+  'agent_center_task_cancel',
+  {
+    title: 'Cancel an A2A Task',
+    description: 'Request cancellation of a non-terminal A2A Task that this owner can access.',
+    inputSchema: {
+      target_agent: z.string().describe('The agent the task was delegated to'),
+      task_id: z.string().describe('Task id returned by agent_center_delegate'),
+    },
+  },
+  async (args) => {
+    try {
+      const task = await cancelTask(args.target_agent, args.task_id);
+      return ok(`Canceled ${task.id}: ${task.status.state}`);
+    } catch (e) {
+      return fail(`Task cancel failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  },
+);
+
+const taskStateMap: Record<string, A2ATaskState> = {
+  working: 'TASK_STATE_WORKING',
+  completed: 'TASK_STATE_COMPLETED',
+  failed: 'TASK_STATE_FAILED',
+  'input-required': 'TASK_STATE_INPUT_REQUIRED',
+  rejected: 'TASK_STATE_REJECTED',
+  'auth-required': 'TASK_STATE_AUTH_REQUIRED',
+};
+
+server.registerTool(
+  'agent_center_task_update',
+  {
+    title: 'Update an inbound A2A Task',
+    description:
+      'Report progress or the final outcome for an A2A Task delivered to this registered agent. Call working before work and exactly one terminal/interrupted state afterward.',
+    inputSchema: {
+      task_id: z.string().describe('Inbound Task id from the delivery event'),
+      state: z.enum(['working', 'completed', 'failed', 'input-required', 'rejected', 'auth-required']),
+      message: z.string().optional().describe('Progress, error, or input/auth request message'),
+      result: z.string().optional().describe('Final result; for completed tasks it is also published as an A2A Artifact'),
+    },
+  },
+  async (args) => {
+    try {
+      if (args.state === 'completed' && !args.result) return fail('Completed Task requires result.');
+      if (['failed', 'input-required', 'rejected', 'auth-required'].includes(args.state) && !args.message) {
+        return fail(`${args.state} Task requires message.`);
+      }
+      const task = await updateTaskFor(config.agentId, args.task_id, {
+        state: taskStateMap[args.state]!,
+        message: args.message,
+        result: args.result,
+      });
+      return ok(`Updated ${task.id}: ${task.status.state}`);
+    } catch (e) {
+      return fail(`Task update failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   },
 );

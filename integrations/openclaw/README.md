@@ -51,6 +51,6 @@ npx -y -p @hiq-ai/agent-center agent-center-openclaw \
   --url http://127.0.0.1:18789/hooks/agent
 ```
 
-The webhook uses `deliver=false`, so the result is not copied to an unrelated chat channel. HTTP 2xx means OpenClaw accepted the run; it does not mean the agent completed the task. The OpenClaw agent must send any response with `reply_to=<message_id>` and call `agent_center_ack` after success.
+The webhook uses `deliver=false`, so the result is not copied to an unrelated chat channel. HTTP 2xx means OpenClaw accepted the run; it does not mean the agent completed the delivery. For a message, the OpenClaw agent sends any response with `reply_to=<message_id>` and calls `agent_center_ack` after success. For an A2A Task, it reports `working` and the final result with `agent_center_task_update`; it does not call inbox ack.
 
 Run this listener under the same process supervisor used for the OpenClaw Gateway. Hub messages survive listener/Gateway downtime and replay after reconnection.

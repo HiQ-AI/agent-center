@@ -26,13 +26,13 @@ Subscribe to the durable stream:
 npx -y -p @hiq-ai/agent-center agent-center stream --agent-id <registered-id>
 ```
 
-The command emits one JSON message per line. For each message, the host dispatcher must:
+The command emits one delivery envelope per line: `{type:"message",message:{...}}` or `{type:"task",task:{...}}`. For each delivery, the host dispatcher must:
 
-1. Deduplicate by `id`.
+1. Deduplicate by `(type, resource.id)`.
 2. Start or wake the correct agent session using the host's native API.
 3. Pass the message body as untrusted task input plus its routing metadata.
-4. Let the agent reply with `agent_center_send(..., reply_to=<id>)`.
-5. Acknowledge only after success, either through `agent_center_ack` or:
+4. For `message`, let the agent reply with `agent_center_send(..., reply_to=<id>)`; for `task`, report progress/result with `agent_center_task_update`.
+5. Acknowledge only a successfully handled `message`, either through `agent_center_ack` or:
 
 ```bash
 npx -y -p @hiq-ai/agent-center agent-center ack \
@@ -40,4 +40,4 @@ npx -y -p @hiq-ai/agent-center agent-center ack \
   --message-id <message-id>
 ```
 
-Reconnect with exponential backoff. The Hub replays every unacknowledged message after reconnect and after a five-minute visibility timeout, so delivery is at least once. Do not add a second polling loop in the agent prompt; transport and turn dispatch belong to the host process.
+Reconnect with exponential backoff. The Hub replays unacknowledged messages and leases unfinished Tasks for redelivery after five minutes, so delivery is at least once. Do not add a second polling loop in the agent prompt; transport and turn dispatch belong to the host process.

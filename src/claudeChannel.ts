@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { config } from './config.js';
 import { formatInboundTask, runDeliveryStream } from './deliveryAdapter.js';
-import type { InboxMessage } from './hubClient.js';
+import type { DeliveryEvent } from './hubClient.js';
 
 export const claudeChannelEnabled = process.env.AGENT_CENTER_CHANNEL === 'claude';
 
@@ -16,20 +16,20 @@ export function claudeChannelServerOptions(): ConstructorParameters<typeof McpSe
   };
 }
 
-export function formatClaudeChannelNotification(message: InboxMessage): {
+export function formatClaudeChannelNotification(event: DeliveryEvent): {
   method: 'notifications/claude/channel';
   params: { content: string; meta: Record<string, string> };
 } {
-  const meta: Record<string, string> = {
-    message_id: message.id,
-    from_agent: message.fromAgent,
-  };
-  if (message.capability) meta.capability = message.capability;
-  if (message.replyTo) meta.reply_to = message.replyTo;
+  const meta: Record<string, string> =
+    event.type === 'message'
+      ? { delivery_type: 'message', message_id: event.message.id, from_agent: event.message.fromAgent }
+      : { delivery_type: 'task', task_id: event.task.id, context_id: event.task.contextId };
+  if (event.type === 'message' && event.message.capability) meta.capability = event.message.capability;
+  if (event.type === 'message' && event.message.replyTo) meta.reply_to = event.message.replyTo;
   return {
     method: 'notifications/claude/channel',
     params: {
-      content: formatInboundTask(message),
+      content: formatInboundTask(event),
       meta,
     },
   };
@@ -40,8 +40,8 @@ export function startClaudeChannel(server: McpServer): void {
   controller = new AbortController();
   void runDeliveryStream(
     config.agentId,
-    async (message) => {
-      await server.server.notification(formatClaudeChannelNotification(message) as never);
+    async (event) => {
+      await server.server.notification(formatClaudeChannelNotification(event) as never);
     },
     controller.signal,
     (message) => process.stderr.write(`[agent-center claude-channel] ${message}\n`),
