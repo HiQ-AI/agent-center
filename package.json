@@ -1,6 +1,6 @@
 {
   "name": "@hiq-ai/agent-center",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Agent Center connector — register personal agents, discover capabilities, exchange durable messages, and delegate A2A v1 Tasks.",
   "type": "module",
   "bin": {

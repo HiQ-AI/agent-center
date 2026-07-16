@@ -1,7 +1,15 @@
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { config } from '../src/config.js';
-import { delegateTask, isRegistered, register, sendMessage, streamEvents, streamInbox } from '../src/hubClient.js';
+import {
+  delegateTask,
+  isRegistered,
+  register,
+  sendMessage,
+  streamEvents,
+  streamInbox,
+  waitForTask,
+} from '../src/hubClient.js';
 
 const originalFetch = globalThis.fetch;
 const originalToken = config.token;
@@ -133,9 +141,44 @@ test('delegateTask sends A2A v1 headers and registered source identity', async (
   assert.equal(headers['Content-Type'], 'application/a2a+json');
   assert.equal(headers.Accept, 'application/a2a+json');
   assert.equal(headers['A2A-Version'], '1.0');
+  assert.equal(headers['A2A-Extensions'], 'https://agent-center.hiq.earth/extensions/routing/v1');
   const body = JSON.parse(String(request?.init?.body)) as {
     metadata: { agentCenter: { sourceAgentId: string; requestedCapability: string } };
   };
   assert.equal(body.metadata.agentCenter.sourceAgentId, config.agentId);
   assert.equal(body.metadata.agentCenter.requestedCapability, 'review');
+});
+
+test('waitForTask hydrates a terminal SSE projection from the Task snapshot', async () => {
+  config.token = 'mkt_test';
+  const encoder = new TextEncoder();
+  const requests: string[] = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    requests.push(url);
+    if (url.endsWith(':subscribe')) {
+      const projection = {
+        id: 'task-terminal',
+        contextId: 'context-1',
+        status: { state: 'TASK_STATE_COMPLETED', timestamp: '2026-07-16T00:00:00.000Z' },
+      };
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ task: projection })}\n\n`));
+          controller.close();
+        },
+      });
+      return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+    }
+    return Response.json({
+      id: 'task-terminal',
+      contextId: 'context-1',
+      status: { state: 'TASK_STATE_COMPLETED', timestamp: '2026-07-16T00:00:00.000Z' },
+      artifacts: [{ artifactId: 'result', parts: [{ text: 'full result' }] }],
+    });
+  };
+
+  const task = await waitForTask('agent-b', 'task-terminal', 1);
+  assert.equal(task.artifacts?.[0]?.parts[0]?.text, 'full result');
+  assert.equal(requests.length, 2);
 });
