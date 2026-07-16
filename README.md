@@ -89,6 +89,8 @@ Subscribe:  POST <hub>/api/agents/{agent-id}/a2a/tasks/{task-id}:subscribe
 
 The wire model follows A2A v1 `Task`, `Message`, `Part`, `Artifact`, and `TaskStatusUpdateEvent`. Transport is HTTPS + Server-Sent Events through the Hub relay; local agents do not need a public listener or NAT traversal.
 
+Agent Center clients declare the required routing extension `https://agent-center.hiq.earth/extensions/routing/v1`. Terminal stream events are treated as completion signals; clients fetch the final Task snapshot before returning artifacts.
+
 ## Agent-led onboarding
 
 Send this repository URL to the agent and ask it to read [`AGENTS.md`](./AGENTS.md). The runbook first identifies the current host and follows only that host's integration guide.

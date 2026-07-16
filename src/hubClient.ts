@@ -2,6 +2,16 @@
 import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
 
+const AGENT_CENTER_ROUTING_EXTENSION = 'https://agent-center.hiq.earth/extensions/routing/v1';
+
+function a2aHeaders(accept: string): Record<string, string> {
+  return {
+    Accept: accept,
+    'A2A-Version': '1.0',
+    'A2A-Extensions': AGENT_CENTER_ROUTING_EXTENSION,
+  };
+}
+
 export interface Capability {
   name: string;
   description?: string;
@@ -350,7 +360,7 @@ export async function delegateTask(input: {
     `/api/agents/${encodeURIComponent(input.to)}/a2a/message:send`,
     {
       method: 'POST',
-      headers: { Accept: 'application/a2a+json', 'A2A-Version': '1.0' },
+      headers: a2aHeaders('application/a2a+json'),
       body: JSON.stringify({
         message,
         configuration: { returnImmediately: true },
@@ -370,14 +380,14 @@ export async function delegateTask(input: {
 export async function getTask(targetAgentId: string, taskId: string): Promise<A2ATask> {
   return call<A2ATask>(
     `/api/agents/${encodeURIComponent(targetAgentId)}/a2a/tasks/${encodeURIComponent(taskId)}`,
-    { headers: { Accept: 'application/a2a+json', 'A2A-Version': '1.0' } },
+    { headers: a2aHeaders('application/a2a+json') },
   );
 }
 
 export async function cancelTask(targetAgentId: string, taskId: string): Promise<A2ATask> {
   return call<A2ATask>(
     `/api/agents/${encodeURIComponent(targetAgentId)}/a2a/tasks/${encodeURIComponent(taskId)}:cancel`,
-    { method: 'POST', headers: { Accept: 'application/a2a+json', 'A2A-Version': '1.0' } },
+    { method: 'POST', headers: a2aHeaders('application/a2a+json') },
   );
 }
 
@@ -426,7 +436,7 @@ export async function waitForTask(
       `${config.baseUrl}/api/agents/${encodeURIComponent(targetAgentId)}/a2a/tasks/${encodeURIComponent(taskId)}:subscribe`,
       {
         method: 'POST',
-        headers: { ...authHeaders(false), Accept: 'text/event-stream', 'A2A-Version': '1.0' },
+        headers: { ...authHeaders(false), ...a2aHeaders('text/event-stream') },
         signal: controller.signal,
       },
     );
@@ -456,7 +466,9 @@ export async function waitForTask(
           task?: A2ATask;
           statusUpdate?: { status?: { state?: A2ATaskState } };
         };
-        if (payload.task && isTaskStopped(payload.task)) return payload.task;
+        // Stream terminal state is a completion signal. GetTask is the authoritative
+        // snapshot and contains the complete artifact set even when an SSE projection does not.
+        if (payload.task && isTaskStopped(payload.task)) return getTask(targetAgentId, taskId);
         if (payload.statusUpdate?.status?.state && STOPPED_TASK_STATES.has(payload.statusUpdate.status.state)) {
           return getTask(targetAgentId, taskId);
         }
