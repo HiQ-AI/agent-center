@@ -4,7 +4,12 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
 import { config } from './config.js';
-import { createShutdownController, formatInboundTask, runDeliveryStream } from './deliveryAdapter.js';
+import {
+  createShutdownController,
+  formatInboundTask,
+  runDeliveryStream,
+  runPresenceHeartbeat,
+} from './deliveryAdapter.js';
 import {
   ackMessageFor,
   getTask,
@@ -352,6 +357,7 @@ async function main(): Promise<void> {
   });
   process.stderr.write(`[agent-center-codex] Hub=${config.baseUrl} agent=${agentId} thread=${sessionId}\n`);
   await client.initialize();
+  const presence = runPresenceHeartbeat(agentId, controller.signal, undefined, undefined, log);
   try {
     await runDeliveryStream(
       agentId,
@@ -360,6 +366,8 @@ async function main(): Promise<void> {
       log,
     );
   } finally {
+    controller.abort();
+    await presence;
     client.stop();
   }
 }

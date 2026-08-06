@@ -9,7 +9,7 @@ import {
   finalAgentMessageText,
   headlessServerRequestReply,
 } from '../src/codexAdapter.js';
-import { formatInboundTask } from '../src/deliveryAdapter.js';
+import { formatInboundTask, runPresenceHeartbeat } from '../src/deliveryAdapter.js';
 import { openClawRequestBody } from '../src/openclawAdapter.js';
 import type { DeliveryEvent, InboxMessage } from '../src/hubClient.js';
 
@@ -73,6 +73,22 @@ test('Claude Channel emits the host-specific notification method', () => {
 
 test('Codex adapter uses the stable app-server stdio transport', () => {
   assert.deepEqual(codexAppServerArgs(), ['app-server', '--listen', 'stdio://']);
+});
+
+test('Codex presence heartbeat starts immediately and stops with the adapter', async () => {
+  const controller = new AbortController();
+  const agentIds: string[] = [];
+  await runPresenceHeartbeat(
+    'codex-worker',
+    controller.signal,
+    async (agentId) => {
+      agentIds.push(agentId);
+      if (agentIds.length === 3) controller.abort();
+      return true;
+    },
+    1,
+  );
+  assert.deepEqual(agentIds, ['codex-worker', 'codex-worker', 'codex-worker']);
 });
 
 test('Codex adapter only attaches to an idle thread', () => {
