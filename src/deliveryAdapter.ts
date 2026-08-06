@@ -1,8 +1,26 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import { streamEvents, type A2APart, type DeliveryEvent, type InboxMessage } from './hubClient.js';
+import { heartbeatFor, streamEvents, type A2APart, type DeliveryEvent, type InboxMessage } from './hubClient.js';
 
 export type DeliverEvent = (event: DeliveryEvent) => Promise<void>;
 const DELIVERY_DEDUP_MS = 5 * 60_000;
+const PRESENCE_HEARTBEAT_MS = 60_000;
+
+export async function runPresenceHeartbeat(
+  agentId: string,
+  signal: AbortSignal,
+  sendHeartbeat: (id: string) => Promise<boolean> = heartbeatFor,
+  intervalMs = PRESENCE_HEARTBEAT_MS,
+  log: (message: string) => void = () => undefined,
+): Promise<void> {
+  while (!signal.aborted) {
+    if (!(await sendHeartbeat(agentId))) log('presence heartbeat failed');
+    try {
+      await delay(intervalMs, undefined, { signal });
+    } catch {
+      return;
+    }
+  }
+}
 
 function formatParts(parts: A2APart[]): string {
   return parts

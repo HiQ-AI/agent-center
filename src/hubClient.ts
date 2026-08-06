@@ -109,8 +109,13 @@ export async function register(input: {
 
 export async function heartbeat(): Promise<boolean> {
   requireRegistration();
+  return heartbeatFor(config.agentId);
+}
+
+/** Host-adapter variant: Hub ownership + registration checks remain authoritative. */
+export async function heartbeatFor(agentId: string): Promise<boolean> {
   try {
-    await call(`/api/agents/${encodeURIComponent(config.agentId)}/heartbeat`, { method: 'POST' });
+    await call(`/api/agents/${encodeURIComponent(agentId)}/heartbeat`, { method: 'POST' });
     return true;
   } catch {
     return false;

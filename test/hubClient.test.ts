@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { config } from '../src/config.js';
 import {
   delegateTask,
+  heartbeatFor,
   isRegistered,
   register,
   sendMessage,
@@ -61,6 +62,21 @@ test('register creates the current session with passive defaults', async () => {
     discoverable: false,
     acceptsDelegation: false,
   });
+});
+
+test('host adapter heartbeat refreshes the requested registered agent', async () => {
+  let request: { url: string; init?: RequestInit } | undefined;
+  config.token = 'mkt_test';
+  globalThis.fetch = async (input, init) => {
+    request = { url: String(input), init };
+    return Response.json({ ok: true });
+  };
+
+  assert.equal(await heartbeatFor('codex-worker'), true);
+  assert.equal(request?.url, `${config.baseUrl}/api/agents/codex-worker/heartbeat`);
+  assert.equal(request?.init?.method, 'POST');
+  assert.equal((request?.init?.headers as Record<string, string>).Authorization, 'Bearer mkt_test');
+  assert.equal((request?.init?.headers as Record<string, string>)['Content-Type'], undefined);
 });
 
 test('streamInbox parses durable SSE message events across chunk boundaries', async () => {
