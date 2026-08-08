@@ -44,6 +44,51 @@ function arg(name: string): string | undefined {
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
+function hasArg(name: string): boolean {
+  return process.argv.includes(`--${name}`);
+}
+
+export const ANALYSIS_ONLY_INSTRUCTIONS = `You are an analysis-only Agent Center worker.
+Allowed work: answer questions, investigate and diagnose problems, analyze evidence, audit or review existing material, write plans or proposals in the response, and retrieve data using read-only queries.
+Forbidden work: create, edit, delete, move, or generate files; implement or modify code; commit, push, or change pull requests; execute database DDL or DML; mutate data through APIs, MCP tools, or external systems; deploy, restart, reconfigure, send messages, or perform any other state-changing action.
+Use tools only for read-only inspection. The Agent Center MCP may be used only to report or reply to the current delivery. If a request requires a forbidden action, do not attempt it; explain the boundary and, for an A2A Task, report TASK_STATE_REJECTED.`;
+
+export function codexExecutionOverrides(analysisOnly: boolean): Record<string, unknown> {
+  if (!analysisOnly) return {};
+  return {
+    sandboxPolicy: { type: 'readOnly', networkAccess: true },
+    developerInstructions: ANALYSIS_ONLY_INSTRUCTIONS,
+  };
+}
+
+export function codexResumeParams(
+  threadId: string,
+  cwd: string,
+  analysisOnly: boolean,
+): Record<string, unknown> {
+  return {
+    threadId,
+    cwd,
+    approvalPolicy: 'never',
+    ...codexExecutionOverrides(analysisOnly),
+  };
+}
+
+export function codexTurnStartParams(
+  threadId: string,
+  cwd: string,
+  input: string,
+  analysisOnly: boolean,
+): Record<string, unknown> {
+  return {
+    threadId,
+    cwd,
+    approvalPolicy: 'never',
+    ...codexExecutionOverrides(analysisOnly),
+    input: [{ type: 'text', text: input }],
+  };
+}
+
 export function codexAppServerArgs(): string[] {
   return ['app-server', '--listen', 'stdio://'];
 }
@@ -140,6 +185,7 @@ export class CodexAppServerClient {
       sessionId: string;
       cwd: string;
       codexBin: string;
+      analysisOnly?: boolean;
       signal?: AbortSignal;
       log?: (message: string) => void;
     },
@@ -178,21 +224,21 @@ export class CodexAppServerClient {
       includeTurns: true,
     });
     assertCodexThreadCanResume(readable);
-    const resumed = await this.request('thread/resume', {
-      threadId: this.options.sessionId,
-      cwd: this.options.cwd,
-      approvalPolicy: 'never',
-    });
+    const resumed = await this.request('thread/resume', codexResumeParams(
+      this.options.sessionId,
+      this.options.cwd,
+      this.options.analysisOnly === true,
+    ));
     assertIdleCodexThread(resumed);
   }
 
   async deliver(event: DeliveryEvent): Promise<TurnCompletion> {
-    const result = (await this.request('turn/start', {
-      threadId: this.options.sessionId,
-      cwd: this.options.cwd,
-      approvalPolicy: 'never',
-      input: [{ type: 'text', text: formatInboundTask(event) }],
-    })) as { turn?: { id?: string } };
+    const result = (await this.request('turn/start', codexTurnStartParams(
+      this.options.sessionId,
+      this.options.cwd,
+      formatInboundTask(event),
+      this.options.analysisOnly === true,
+    ))) as { turn?: { id?: string } };
     const turnId = result.turn?.id;
     if (!turnId) throw new Error('codex app-server turn/start returned no turn id');
     const completed = this.completedTurns.get(turnId);
@@ -337,7 +383,7 @@ async function main(): Promise<void> {
   const sessionId = arg('session-id') ?? process.env.CODEX_THREAD_ID;
   if (!agentId || !sessionId) {
     process.stderr.write(
-      'Usage: agent-center-codex --agent-id <registered-id> --session-id <codex-thread-id> [--cwd <path>]\n',
+      'Usage: agent-center-codex --agent-id <registered-id> --session-id <codex-thread-id> [--cwd <path>] [--analysis-only]\n',
     );
     process.exitCode = 2;
     return;
@@ -352,6 +398,7 @@ async function main(): Promise<void> {
     sessionId,
     cwd: arg('cwd') ?? process.cwd(),
     codexBin: process.env.CODEX_BIN ?? 'codex',
+    analysisOnly: hasArg('analysis-only'),
     signal: controller.signal,
     log,
   });

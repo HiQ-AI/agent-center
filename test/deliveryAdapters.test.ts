@@ -5,6 +5,9 @@ import {
   assertCodexThreadCanResume,
   assertIdleCodexThread,
   codexAppServerArgs,
+  codexExecutionOverrides,
+  codexResumeParams,
+  codexTurnStartParams,
   completedCodexResult,
   finalAgentMessageText,
   headlessServerRequestReply,
@@ -73,6 +76,22 @@ test('Claude Channel emits the host-specific notification method', () => {
 
 test('Codex adapter uses the stable app-server stdio transport', () => {
   assert.deepEqual(codexAppServerArgs(), ['app-server', '--listen', 'stdio://']);
+});
+
+test('Codex analysis-only mode applies read-only sandbox and immutable scope instructions', () => {
+  assert.deepEqual(codexExecutionOverrides(false), {});
+  const overrides = codexExecutionOverrides(true);
+  assert.deepEqual(overrides.sandboxPolicy, { type: 'readOnly', networkAccess: true });
+  assert.match(String(overrides.developerInstructions), /read-only queries/);
+  assert.match(String(overrides.developerInstructions), /Forbidden work: create, edit, delete/);
+  assert.match(String(overrides.developerInstructions), /TASK_STATE_REJECTED/);
+  const resume = codexResumeParams('thread-1', 'D:\\workspace', true);
+  const turn = codexTurnStartParams('thread-1', 'D:\\workspace', 'inspect this', true);
+  assert.deepEqual(resume.sandboxPolicy, overrides.sandboxPolicy);
+  assert.equal(resume.developerInstructions, overrides.developerInstructions);
+  assert.deepEqual(turn.sandboxPolicy, overrides.sandboxPolicy);
+  assert.equal(turn.developerInstructions, overrides.developerInstructions);
+  assert.deepEqual(turn.input, [{ type: 'text', text: 'inspect this' }]);
 });
 
 test('Codex presence heartbeat starts immediately and stops with the adapter', async () => {
