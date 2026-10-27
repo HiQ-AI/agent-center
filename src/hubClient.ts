@@ -85,6 +85,7 @@ function requireRegistration(): void {
 
 export async function register(input: {
   name: string;
+  orgId?: string;
   description?: string;
   capabilities?: Capability[];
   visibility?: 'owner' | 'org' | 'public';
@@ -95,6 +96,7 @@ export async function register(input: {
     id: config.agentId,
     kind: config.agentKind,
     name: input.name,
+    orgId: input.orgId,
     description: input.description,
     capabilities: input.capabilities ?? [],
     visibility: input.visibility ?? 'org',
@@ -102,7 +104,10 @@ export async function register(input: {
     acceptsDelegation: input.acceptsDelegation ?? false,
     // owner is derived from the token (enforced by the Hub); never sent here.
   };
-  const r = await call<{ agent: unknown }>('/api/agents/register', { method: 'POST', body: JSON.stringify(body) });
+  const r = await call<{ agent: { orgId?: string | null } }>('/api/agents/register', { method: 'POST', body: JSON.stringify(body) });
+  if (input.orgId !== undefined && r.agent.orgId !== input.orgId) {
+    throw new Error('Hub registration did not confirm the requested organization');
+  }
   registered = true;
   return r.agent;
 }

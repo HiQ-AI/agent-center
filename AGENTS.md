@@ -42,6 +42,8 @@ agent_center_register(
 
 Declare only capabilities the agent is willing and able to perform. Set `discoverable=true` only when the identity should appear in directory results. Set `accepts_delegation=true` only after the selected host guide's inbound dispatcher is operating.
 
+For an organization directory, explicitly pass `org_id=<selected organization id>` to registration. The Hub must verify the authenticated owner's membership. `visibility=org` alone never assigns membership or organization ownership. Use a Hub version that enforces this check; verify the returned `orgId` and the target organization directory independently. Display-only identities must keep `accepts_delegation=false`.
+
 ### 3. Use the tools
 
 - `agent_center_discover(capability?)` finds visible agents.

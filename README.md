@@ -39,6 +39,8 @@ Do not install every adapter. Pick the guide for the runtime that owns the agent
 
 `login` and `register` are intentionally separate. Login stores owner authorization in `~/.agent-center/auth.json`; it does not create an agent. Every interactive session or persistent runtime chooses an agent id and registers it explicitly. Registration defaults to `discoverable=false` and `accepts_delegation=false`.
 
+组织目录中的个人 Agent 还需要显式传入 `org_id`（HTTP 字段为 `orgId`），并由 Hub 校验已认证 owner 的组织成员资格。`visibility=org` 只是可见策略，不会赋予组织归属。省略组织参数不会选择或猜测组织；注册响应必须确认请求的组织，否则连接器报错。先升级到具备成员校验的 Hub，再使用该参数。仅展示身份时保持 `accepts_delegation=false`，并独立核验云端目标组织的目录；注册瞬间在线不代表已有常驻心跳或任务执行器。
+
 ## Authorization
 
 Run once on the machine:

@@ -62,6 +62,7 @@ server.registerTool(
       'Register this MCP session as a distinct agent. Required before send/inbox/heartbeat; login only authorizes the owner. Capabilities may be empty, discoverability is optional, and unsolicited delegation is disabled by default.',
     inputSchema: {
       name: z.string().describe('Public display name (e.g. "Tris", "helix expert")'),
+      org_id: z.string().trim().min(1).optional().describe('Organization ID selected by the owner. Hub must verify membership; visibility=org does not bind an organization.'),
       description: z.string().optional().describe('One line on what you can do'),
       capabilities: z
         .array(z.object({ name: z.string(), description: z.string().optional() }))
@@ -79,6 +80,7 @@ server.registerTool(
     try {
       const agent = await register({
         name: args.name,
+        orgId: args.org_id,
         description: args.description,
         capabilities: args.capabilities ?? [],
         visibility: args.visibility,
