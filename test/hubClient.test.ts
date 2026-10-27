@@ -79,6 +79,27 @@ test('host adapter heartbeat refreshes the requested registered agent', async ()
   assert.equal((request?.init?.headers as Record<string, string>)['Content-Type'], undefined);
 });
 
+test('register forwards an explicit organization without enabling delegation', async () => {
+  config.token = 'mkt_test';
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body));
+    assert.equal(body.orgId, 'member-org');
+    assert.equal(body.acceptsDelegation, false);
+    assert.equal(body.owner, undefined);
+    return Response.json({ agent: { id: config.agentId, orgId: 'member-org' } });
+  };
+  const agent = await register({ name: 'Personal agent', orgId: 'member-org' });
+  assert.deepEqual(agent, { id: config.agentId, orgId: 'member-org' });
+});
+
+test('register rejects an unconfirmed organization and propagates membership rejection', async () => {
+  config.token = 'mkt_test';
+  globalThis.fetch = async () => Response.json({ agent: { id: config.agentId, orgId: null } });
+  await assert.rejects(register({ name: 'Personal agent', orgId: 'member-org' }), /did not confirm/);
+  globalThis.fetch = async () => Response.json({ error: 'not a member of the selected organization' }, { status: 403 });
+  await assert.rejects(register({ name: 'Personal agent', orgId: 'other-org' }), /Hub 403: not a member/);
+});
+
 test('streamInbox parses durable SSE message events across chunk boundaries', async () => {
   config.token = 'mkt_test';
   const encoder = new TextEncoder();
