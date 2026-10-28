@@ -28,4 +28,5 @@ export const config = {
   agentKind: (process.env.AGENT_KIND ?? 'personal') as 'nomad' | 'cowork' | 'personal',
   // Device authorization (device flow) goes through deck.
   deckBase: (process.env.DECK_BASE ?? 'https://lab.hiq.earth/deck').replace(/\/$/, ''),
+  webBase: (process.env.AGENT_CENTER_WEB_BASE ?? 'https://cortex.hiq.earth').replace(/\/$/, ''),
 };

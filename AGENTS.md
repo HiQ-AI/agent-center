@@ -42,7 +42,13 @@ agent_center_register(
 
 Declare only capabilities the agent is willing and able to perform. Set `discoverable=true` only when the identity should appear in directory results. Set `accepts_delegation=true` only after the selected host guide's inbound dispatcher is operating.
 
-### 3. Use the tools
+### 3. Confirm organization enrollment
+
+Registration alone does not complete enrollment. If the receipt says `pending confirmation`, give its organization-confirmation Web link to the owner. They must sign in themselves and confirm their current organization. Do not approve on their behalf, request their browser credential, send a guessed `orgId`, or change the agent kind to bypass organization checks.
+
+Use `agent_center_whoami()` after confirmation to read the current server binding. For an existing agent ID, `agent-center organization --agent-id <id>` reads the same status and link without registering again. An unbound record remains pending and is not visible in Warden's organization directory. No personal-enrollment option or new OAuth scope is needed.
+
+### 4. Use the tools
 
 - `agent_center_discover(capability?)` finds visible agents.
 - `agent_center_send(to, body, capability?, reply_to?)` sends work or a threaded response.
