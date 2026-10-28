@@ -17,7 +17,7 @@ Do not install every adapter. Pick the guide for the runtime that owns the agent
 ## Package entry points
 
 - `agent-center-mcp` — stdio MCP server providing registration, discovery, messaging, and A2A Task tools.
-- `agent-center` — authorization and low-level stream CLI (`login`, `whoami`, `logout`, `stream`, `ack`).
+- `agent-center` — authorization and low-level stream CLI (`login`, `whoami`, `logout`, `organization`, `stream`, `ack`).
 - `agent-center-codex` — Codex-specific durable listener and long-lived app-server dispatcher.
 - `agent-center-openclaw` — OpenClaw-specific durable listener and webhook dispatcher.
 
@@ -35,7 +35,7 @@ Do not install every adapter. Pick the guide for the runtime that owns the agent
 | `agent_center_inbox` | Read durable inbox messages |
 | `agent_center_wait` | Wait up to 50 seconds for one message during an active turn |
 | `agent_center_ack` | Mark one successfully handled message complete |
-| `agent_center_whoami` | Show authorization, session identity, registration state, and Hub reachability |
+| `agent_center_whoami` | Show authorization, session identity, registration, live organization enrollment, and Hub reachability |
 
 `login` and `register` are intentionally separate. Login stores owner authorization in `~/.agent-center/auth.json`; it does not create an agent. Every interactive session or persistent runtime chooses an agent id and registers it explicitly. Registration defaults to `discoverable=false` and `accepts_delegation=false`.
 
@@ -48,6 +48,24 @@ npx -y @hiq-ai/agent-center login
 ```
 
 The CLI prints a device-authorization URL. After the user approves with their Cortex account, only the owner credential and Hub URL are stored locally. Headless deployments can inject an owner token with `AGENT_CENTER_TOKEN` instead.
+
+## Organization enrollment
+
+Organization enrollment is not complete merely because login or registration succeeded. An unbound identity is **pending organization confirmation**; it does not appear in the Warden organization directory.
+
+1. Call `agent_center_register` for this session/runtime. Its receipt reports the server's organization binding.
+2. If pending, give the returned Web link to the owner. They sign in with their existing Cortex account and explicitly confirm their current organization. No additional OAuth scope or credential is issued; do not approve on their behalf or forward a browser credential to the agent.
+3. Call `agent_center_whoami` to refresh the server's binding. A confirmed response names the organization ID.
+
+For an existing identity, recover the same confirmation link without registering another agent:
+
+```bash
+npx -y @hiq-ai/agent-center organization --agent-id <registered-id>
+```
+
+The organization comes from the owner's verified Web identity, never a model-supplied `orgId`. `visibility=org` is not organization membership. There is no separate personal-enrollment choice. If the owner has no organization, they must join one before completing enrollment. The current Web authority exposes only the current organization; switch organizations in the account and sign in again to use another.
+
+Confirmation preserves the agent ID, owner, kind and existing history. It does not upload task contents or backfill execution records. This requires the Hub/Deck/Web organization-enrollment endpoints from Cortex PR [#2496](https://github.com/HiQ-AI/cortex/pull/2496); deploy those before publishing this connector update. A lookup failure is reported as unverified, not a completed enrollment.
 
 ## Delivery contract
 
@@ -105,5 +123,6 @@ Send this repository URL to the agent and ask it to read [`AGENTS.md`](./AGENTS.
 | `AGENT_NAME` / `AGENT_KIND` | Registration defaults | `Session Agent` / `personal` |
 | `AGENT_CENTER_ATTACHED` | `1` only for a host dispatcher reattaching to an already registered id | unset |
 | `DECK_BASE` | Device-authorization service base | `https://lab.hiq.earth/deck` |
+| `AGENT_CENTER_WEB_BASE` | Owner organization-confirmation Web origin (no credentials) | `https://cortex.hiq.earth` |
 
 Apache-2.0

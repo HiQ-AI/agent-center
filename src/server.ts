@@ -10,6 +10,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { config } from './config.js';
+import { organizationEnrollmentReceipt } from './organizationEnrollment.js';
 import {
   claudeChannelEnabled,
   claudeChannelServerOptions,
@@ -25,6 +26,7 @@ import {
   ackMessage,
   waitForMessage,
   isRegistered,
+  getOrganizationBinding,
   delegateTask,
   getTask,
   cancelTask,
@@ -33,7 +35,7 @@ import {
   type A2ATaskState,
 } from './hubClient.js';
 
-const VERSION = '0.0.4';
+const VERSION = '0.0.8';
 
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 function startHeartbeat(): void {
@@ -59,7 +61,7 @@ server.registerTool(
   {
     title: 'Register this Agent Center session',
     description:
-      'Register this MCP session as a distinct agent. Required before send/inbox/heartbeat; login only authorizes the owner. Capabilities may be empty, discoverability is optional, and unsolicited delegation is disabled by default.',
+      'Register this MCP session as a distinct agent. Required before send/inbox/heartbeat; login only authorizes the owner. Registration alone does not complete organization enrollment: ask the owner to confirm the returned organization link. Capabilities may be empty, discoverability is optional, and unsolicited delegation is disabled by default.',
     inputSchema: {
       name: z.string().describe('Public display name (e.g. "Tris", "helix expert")'),
       description: z.string().optional().describe('One line on what you can do'),
@@ -92,6 +94,7 @@ server.registerTool(
           `  capabilities      : ${args.capabilities?.length ?? 0}\n` +
           `  discoverable      : ${args.discoverable ?? false}\n` +
           `  accepts delegation: ${args.accepts_delegation ?? false}\n` +
+          `${organizationEnrollmentReceipt(agent, config.webBase)}\n` +
           `${JSON.stringify(agent)}`,
       );
     } catch (e) {
@@ -326,7 +329,7 @@ server.registerTool(
   'agent_center_whoami',
   {
     title: 'Check connection status',
-    description: 'Show owner authorization, this MCP process session id, registration state, and Hub reachability.',
+    description: 'Show owner authorization, this session identity, registration and current organization enrollment status, and Hub reachability.',
     inputSchema: {},
   },
   async () => {
@@ -334,6 +337,14 @@ server.registerTool(
       return ok('Not connected: no credential yet. Run `npx -y @hiq-ai/agent-center login` to authorize, or set AGENT_CENTER_TOKEN.');
     }
     const reachable = await probeReachable();
+    let enrollment = 'Organization enrollment: register this session first.';
+    if (isRegistered()) {
+      try {
+        enrollment = organizationEnrollmentReceipt(await getOrganizationBinding(config.agentId), config.webBase);
+      } catch (e) {
+        enrollment = `Organization enrollment: unverified (${e instanceof Error ? e.message : String(e)})`;
+      }
+    }
     return ok(
       `Connected to Agent Center.\n` +
         `  id      : ${config.agentId}\n` +
@@ -342,7 +353,8 @@ server.registerTool(
         `  kind    : ${config.agentKind}\n` +
         `  registered: ${isRegistered() ? '✅ yes' : '❌ no (call agent_center_register)'}\n` +
         `  hub     : ${config.baseUrl}\n` +
-        `  reachable: ${reachable ? '✅ yes' : '❌ no (token may be revoked, or Hub unreachable)'}`,
+        `  reachable: ${reachable ? '✅ yes' : '❌ no (token may be revoked, or Hub unreachable)'}\n` +
+        enrollment,
     );
   },
 );

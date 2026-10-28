@@ -107,6 +107,12 @@ export async function register(input: {
   return r.agent;
 }
 
+/** Read the authoritative organization binding without registering a second identity. */
+export async function getOrganizationBinding(agentId: string): Promise<unknown> {
+  const result = await call<{ agent: unknown }>(`/api/agents/${encodeURIComponent(agentId)}/organization-binding`);
+  return result.agent;
+}
+
 export async function heartbeat(): Promise<boolean> {
   requireRegistration();
   return heartbeatFor(config.agentId);

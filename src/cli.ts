@@ -11,7 +11,8 @@
 import { spawn } from 'node:child_process';
 import { config } from './config.js';
 import { loadAuth, saveAuth, clearAuth, authFilePath } from './authStore.js';
-import { ackMessageFor, streamEvents } from './hubClient.js';
+import { ackMessageFor, getOrganizationBinding, streamEvents } from './hubClient.js';
+import { organizationEnrollmentReceipt } from './organizationEnrollment.js';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -74,7 +75,8 @@ async function login(): Promise<void> {
       const { access_token, owner } = (await res.json()) as { access_token: string; owner: string };
       saveAuth({ token: access_token, owner, hubUrl: config.baseUrl });
       console.log(`\n\n  ✅ Authorized as owner=${owner}; credential stored at ${authFilePath}`);
-      console.log('  Each agent session must call agent_center_register before send/inbox/heartbeat.\n');
+      console.log('  Each agent session must call agent_center_register, then ask the owner to confirm the returned organization link.');
+      console.log('  Login alone does not complete organization enrollment.\n');
       return;
     }
     console.error(`\n  Authorization failed: ${res.status} ${await res.text()}`);
@@ -96,6 +98,22 @@ function whoami(): void {
 function logout(): void {
   clearAuth();
   console.log('Local credential cleared.');
+}
+
+async function organization(): Promise<void> {
+  const agentId = arg('agent-id');
+  if (!agentId) {
+    console.error('organization requires --agent-id <registered-agent-id>');
+    process.exitCode = 2;
+    return;
+  }
+  try {
+    const agent = await getOrganizationBinding(agentId);
+    console.log(organizationEnrollmentReceipt(agent, config.webBase));
+  } catch (e) {
+    console.error(`Organization enrollment could not be verified: ${e instanceof Error ? e.message : String(e)}`);
+    process.exitCode = 1;
+  }
 }
 
 async function stream(): Promise<void> {
@@ -127,13 +145,15 @@ const cmd = process.argv[2];
 if (cmd === 'login') void login();
 else if (cmd === 'whoami') whoami();
 else if (cmd === 'logout') logout();
+else if (cmd === 'organization') void organization();
 else if (cmd === 'stream') void stream();
 else if (cmd === 'ack') void ack();
 else {
-  console.log('Usage: agent-center <login|whoami|logout|stream|ack>');
+  console.log('Usage: agent-center <login|whoami|logout|organization|stream|ack>');
   console.log('  login   device authorization to join the Agent Center (browser confirm)');
   console.log('  whoami  show the current authorization');
   console.log('  logout  clear the local credential');
+  console.log('  organization  check enrollment and show the owner confirmation link (--agent-id <id>)');
   console.log('  stream  stream durable inbox events as NDJSON (--agent-id <id>)');
   console.log('  ack     acknowledge one handled message (--agent-id <id> --message-id <id>)');
 }
